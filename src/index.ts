@@ -4,14 +4,14 @@ import { Network, DEV_NET, MAIN_NET } from '@synthetify/sdk/lib/network'
 import { AssetsList, Exchange, ExchangeAccount, ExchangeState } from '@synthetify/sdk/lib/exchange'
 import { ACCURACY, sleep } from '@synthetify/sdk/lib/utils'
 import { Token, TOKEN_PROGRAM_ID } from '@solana/spl-token'
-import { liquidate, getAccountsAtRisk, createAccountsOnAllCollaterals } from './utils'
+import { liquidate, getAccountsAtRisk, createAccountsOnAllCollaterals, UserWithAddress } from './utils'
 import { cyan, yellow } from 'colors'
 import { Prices } from './prices'
 import { Synchronizer } from './synchronizer'
 
 const XUSD_BEFORE_WARNING = new BN(100).pow(new BN(ACCURACY))
-const CHECK_ALL_INTERVAL = 60 * 60 * 1000
-const CHECK_AT_RISK_INTERVAL = 5 * 60 * 1000
+const CHECK_ALL_INTERVAL = 30 * 60 * 1000
+const CHECK_AT_RISK_INTERVAL = 10 * 60 * 1000
 const NETWORK = Network.MAIN
 
 const provider = Provider.local()
@@ -63,13 +63,21 @@ const main = async () => {
     if (Date.now() > nextFullCheck + CHECK_ALL_INTERVAL) {
       nextFullCheck = Date.now() + CHECK_ALL_INTERVAL
       // Fetching all accounts with debt over limit
-      const newAccounts = await getAccountsAtRisk(
-        connection,
-        exchange,
-        exchangeProgram,
-        state,
-        prices.assetsList
-      )
+      let newAccounts: UserWithAddress[] = undefined
+      while(newAccounts === undefined){
+
+        try {
+          newAccounts = await getAccountsAtRisk(
+            connection,
+            exchange,
+            exchangeProgram,
+            state,
+            prices.assetsList
+            )
+        } catch (error) {
+          console.error(error)
+        }
+      }
 
       const freshAtRisk = newAccounts
         .filter((fresh) => !atRisk.some((old) => old.address.equals(fresh.address)))
@@ -98,16 +106,24 @@ const main = async () => {
         if (slot.lt(exchangeAccount.account.liquidationDeadline)) break
 
         while (true) {
-          const liquidated = await liquidate(
-            exchange,
-            exchangeAccount,
-            prices.assetsList,
-            state.account,
-            collateralAccounts,
-            wallet,
-            xUSDAccount.amount,
-            xUSDAccount.address
-          )
+          let liquidated: boolean = undefined
+          while(liquidated === undefined){
+            try {
+              liquidated = await liquidate(
+                exchange,
+                exchangeAccount,
+                prices.assetsList,
+                state.account,
+                collateralAccounts,
+                wallet,
+                xUSDAccount.amount,
+                xUSDAccount.address
+              )
+            } catch (error) {
+              console.error(error)
+            }
+          }
+
           if (!liquidated) break
           xUSDAccount = await xUSDToken.getOrCreateAssociatedAccountInfo(wallet.publicKey)
         }
