@@ -61,7 +61,7 @@ const main = async () => {
   }
 
   const toxicAccounts = exchangeAccounts.filter(({ userMaxDebt, userDebt }) => {
-    return userMaxDebt.lt(userDebt) && userDebt.gtn(0)
+    return userMaxDebt.eqn(0) && userDebt.gtn(0)
   })
   console.log('toxicAccounts: ')
   for (const { userMaxDebt, userDebt, colRatio } of toxicAccounts) {
