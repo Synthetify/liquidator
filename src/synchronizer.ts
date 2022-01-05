@@ -9,23 +9,28 @@ export class Synchronizer<T> {
   private connection: Connection
   private nameInIDL: string
   public address: PublicKey
-  public account: T | undefined
+  public account: T
 
-  constructor(connection: Connection, address: PublicKey, nameInIDL: string, initialAccount?: T) {
+  constructor(connection: Connection, address: PublicKey, nameInIDL: string, initialAccount: T) {
     this.connection = connection
     this.address = address
     this.nameInIDL = nameInIDL
-
-    if (initialAccount) this.account = initialAccount
-    else
-      this.connection.getAccountInfo(this.address).then((data) => this.updateFromAccountInfo(data))
+    this.account = initialAccount
 
     this.connection.onAccountChange(this.address, (data) => this.updateFromAccountInfo(data))
   }
 
+  public static async build<T>(connection: Connection, address: PublicKey, nameInIDL: string) {
+    const initialAccount = await connection.getAccountInfo(address)
+
+    const data = await connection.getAccountInfo(address)
+    if (data == null) throw new Error('invalid account')
+
+    const initialData = coder.decode<T>(nameInIDL, initialAccount.data)
+    return new Synchronizer<T>(connection, address, nameInIDL, initialData)
+  }
+
   private updateFromAccountInfo(account: AccountInfo<Buffer>) {
     this.account = coder.decode<T>(this.nameInIDL, account.data)
-    // @ts-ignore: Unreachable code error
-    // console.log(this.account, `account updated`)
   }
 }
