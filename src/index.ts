@@ -17,7 +17,7 @@ const NETWORK = Network.MAIN
 const provider = Provider.local()
 // @ts-expect-error
 const wallet = provider.wallet.payer as Account
-const connection = new Connection(clusterApiUrl('mainnet-beta'), 'confirmed')
+const connection = new Connection('https://ssc-dao.genesysgo.net', 'recent')
 const { exchange: exchangeProgram, exchangeAuthority } = MAIN_NET
 
 const main = async () => {
