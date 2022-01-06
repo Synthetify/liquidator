@@ -29,8 +29,6 @@ const main = async () => {
     exchangeAuthority,
     exchangeProgram
   )
-
-  // const state = await exchange.getState()
   const state = new Synchronizer<ExchangeState>(
     connection,
     exchange.stateAddress,
@@ -75,9 +73,9 @@ const main = async () => {
       )
 
       const freshAtRisk = newAccounts
-        .filter((fresh) => !atRisk.some((old) => old.address.equals(fresh.address)))
+        .filter(fresh => !atRisk.some(old => old.address.equals(fresh.address)))
         .sort((a, b) => a.data.liquidationDeadline.cmp(b.data.liquidationDeadline))
-        .map((fresh) => {
+        .map(fresh => {
           return new Synchronizer<ExchangeAccount>(
             connection,
             fresh.address,
