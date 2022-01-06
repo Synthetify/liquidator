@@ -1,6 +1,6 @@
 import { Connection, PublicKey } from '@solana/web3.js'
 import { parsePriceData } from '@pythnetwork/client'
-import { AssetsList } from '@synthetify/sdk/lib/exchange'
+import { AssetsList, Decimal } from '@synthetify/sdk/lib/exchange'
 import { BN } from '@project-serum/anchor'
 import { ORACLE_OFFSET } from '@synthetify/sdk'
 import { toDecimal } from '@synthetify/sdk/lib/utils'
@@ -15,7 +15,7 @@ export class Prices {
 
     // Subscribe to oracle updates
     this.assetsList.assets.forEach(({ feedAddress }, index) => {
-      connection.onAccountChange(feedAddress, (accountInfo) => {
+      connection.onAccountChange(feedAddress, accountInfo => {
         const { price } = parsePriceData(accountInfo.data)
         this.assetsList.assets[index].price = toDecimal(
           new BN(price * 10 ** ORACLE_OFFSET),
@@ -42,5 +42,23 @@ export class Prices {
     )
 
     return new Prices(connection, assetsList)
+  }
+
+  async getPrice(address: PublicKey): Promise<Decimal> {
+    const foundCollateral = this.assetsList.collaterals.find(({ collateralAddress }) =>
+      collateralAddress.equals(address)
+    )?.assetIndex
+
+    const foundSynthetic = this.assetsList.synthetics.find(({ assetAddress }) =>
+      assetAddress.equals(address)
+    )?.assetIndex
+
+    const assetIndex = foundCollateral != undefined ? foundCollateral : foundSynthetic
+
+    if (assetIndex) {
+      throw new Error(`Could not find price for ${address}`)
+    }
+
+    return this.assetsList.assets[assetIndex].price
   }
 }
