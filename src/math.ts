@@ -2,44 +2,24 @@ import { BN } from '@project-serum/anchor'
 import { Decimal, Vault, VaultEntry } from '@synthetify/sdk/lib/exchange'
 import { assert } from 'console'
 
-const updateInterest = async (vault: Vault) => {
+export const adjustVaultInterest = async (
+  vault: Vault,
+  timestamp: BN = new BN(Date.now()).divn(1000)
+) => {
   const ADJUSTMENT_PERIOD = 60
-  const timestamp = new BN(Date.now()).divn(1000)
   const diff = timestamp.sub(vault.lastUpdate).divn(ADJUSTMENT_PERIOD).toNumber()
-
-  // const difTimestamp = Math.floor((Date.now() / 1000 - Number(vault.lastUpdate.toString())) / 60)
   const MINUTES_IN_YEAR = 525600
 
   if (diff >= 1) {
-    const base = {
-      val: vault.debtInterestRate.val
-        .divn(MINUTES_IN_YEAR)
-        .add(new BN(10).pow(new BN(vault.debtInterestRate.scale))),
-      scale: vault.debtInterestRate.scale
-    }
+    const minuteInterestRate = vault.debtInterestRate.val.divn(MINUTES_IN_YEAR)
+    const one = new BN(10).pow(new BN(vault.debtInterestRate.scale))
+    const base = new Fixed(minuteInterestRate.add(one), vault.debtInterestRate.scale)
+    const timePeriodInterest = base.pow(new BN(diff))
 
-    // const timePeriodInterest = base.pow(new BN(diff))
-
-    // const interestRate =
-    //   Number(printBN(vault.debtInterestRate.val, vault.debtInterestRate.scale)) * 100
-    // const minuteInterestRate = interestRate / MINUTES_IN_YEAR
-    // const base = stringToMinDecimalBN(minuteInterestRate.toString())
-    // const timePeriodInterest = base.BN.add(new BN(10).pow(new BN(base.decimal + 2))).pow(
-    //   new BN(difTimestamp)
-    // )
-    //     const actualAccumulatedInterestRate = currentVault.accumulatedInterestRate.val
-    //       .mul(timePeriodInterest)
-    //       .div(new BN(10).pow(new BN(difTimestamp * (base.decimal + 2))))
-    //     const diffAccumulate = actualAccumulatedInterestRate
-    //       .mul(DENUMERATOR)
-    //       .div(userVault.lastAccumulatedInterestRate.val)
-    //     const currentDebt = userVault.syntheticAmount.val.mul(diffAccumulate).div(DENUMERATOR)
-    //     yield put(
-    //       actions.updateAmountSynthetic({
-    //         syntheticAmount: { val: currentDebt, scale: userVault.syntheticAmount.scale },
-    //         vault: userVault.vault
-    //       })
-    //     )
+    vault.accumulatedInterestRate = Fixed.fromDecimal(vault.accumulatedInterestRate)
+      .mul(timePeriodInterest)
+      .getDecimal()
+    vault.lastUpdate = new BN(diff).muln(ADJUSTMENT_PERIOD).add(vault.lastUpdate)
   }
 }
 
@@ -90,7 +70,7 @@ export class Fixed {
 
     let fraction = this.val.mod(denominator).toString()
 
-    while (fraction.length <= this.scale) fraction = '0' + fraction
+    while (fraction.length < this.scale) fraction = '0' + fraction
 
     return `${this.val.div(denominator).toString()}.${fraction}`
   }

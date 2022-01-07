@@ -1,6 +1,9 @@
 import { BN } from '@project-serum/anchor'
 import { assert } from 'chai'
 import { Fixed } from '../src/math'
+import { Decimal, Vault, VaultEntry } from '@synthetify/sdk/lib/exchange'
+import { PublicKey } from '@solana/web3.js'
+import { adjustVaultInterest } from '../src/math'
 
 describe('Fixed', async () => {
   it('create', async () => {
@@ -47,5 +50,58 @@ describe('Fixed', async () => {
     const expected = new Fixed(new BN(131072).mul(denominator), 8)
 
     assert.equal(result.toString(), expected.toString())
+  })
+
+  it('adjust vault interest', async () => {
+    const defaultPubkey = new PublicKey(0)
+    const defaultDecimal: Decimal = {
+      val: new BN(0),
+      scale: 0
+    }
+
+    const vault: Vault = {
+      debtInterestRate: {
+        val: new BN('55000000000000000'),
+        scale: 18
+      },
+      accumulatedInterestRate: {
+        val: new BN(10).pow(new BN(18)),
+        scale: 18
+      },
+      lastUpdate: new BN(0),
+      halted: false,
+      synthetic: defaultPubkey,
+      collateral: defaultPubkey,
+      collateralPriceFeed: defaultPubkey,
+      oracleType: 0,
+      openFee: defaultDecimal,
+      collateralRatio: defaultDecimal,
+      liquidationThreshold: defaultDecimal,
+      liquidationRatio: defaultDecimal,
+      liquidationPenaltyLiquidator: defaultDecimal,
+      liquidationPenaltyExchange: defaultDecimal,
+      accumulatedInterest: defaultDecimal,
+      liquidationFund: defaultPubkey,
+      collateralReserve: defaultPubkey,
+      mintAmount: defaultDecimal,
+      collateralAmount: defaultDecimal,
+      maxBorrow: defaultDecimal,
+      vaultType: 0
+    }
+
+    const timestamp = new BN(430)
+    adjustVaultInterest(vault, timestamp)
+
+    const expectedAccumulatedInterestRate: Decimal = {
+      val: new BN('1000000732496424772'),
+      scale: 18
+    }
+
+    const { accumulatedInterestRate } = vault
+
+    assert.equal(
+      accumulatedInterestRate.val.toString(),
+      expectedAccumulatedInterestRate.val.toString()
+    )
   })
 })
