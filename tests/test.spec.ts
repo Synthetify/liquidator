@@ -1,7 +1,7 @@
 import { BN } from '@project-serum/anchor'
 import { assert } from 'chai'
-import { Fixed } from '../src/math'
-import { Decimal, Vault, VaultEntry } from '@synthetify/sdk/lib/exchange'
+import { adjustVaultEntryInterestDebt, Fixed } from '../src/math'
+import { Decimal, Synthetic, Vault, VaultEntry } from '@synthetify/sdk/lib/exchange'
 import { PublicKey } from '@solana/web3.js'
 import { adjustVaultInterest } from '../src/math'
 
@@ -39,6 +39,13 @@ describe('Fixed', async () => {
     const expected = new Fixed(new BN(53), 3)
 
     assert.equal(result.toString(), expected.toString())
+  })
+
+  it('mulUp', () => {
+    const a = new Fixed(new BN(2).pow(new BN(127)).subn(1), 12)
+    const b = new Fixed(new BN('999999999999'), 12)
+    const expected = new Fixed(new BN('170141183460299090548226834484152418424'), 12)
+    assert.equal(a.mulUp(b).toString(), expected.toString())
   })
 
   it('pow', async () => {
@@ -103,5 +110,63 @@ describe('Fixed', async () => {
       accumulatedInterestRate.val.toString(),
       expectedAccumulatedInterestRate.val.toString()
     )
+  })
+
+  it('adjust vault interest', async () => {
+    const defaultPubkey = new PublicKey(0)
+    const defaultDecimal: Decimal = {
+      val: new BN(0),
+      scale: 0
+    }
+
+    const syntheticDebtPoolSupply = new Fixed(new BN('400000' + '000000'), 6)
+    const syntheticBorrowedSupply = new Fixed(new BN('200010' + '000000'), 6)
+    const syntheticTotalSupply = syntheticDebtPoolSupply.add(syntheticBorrowedSupply)
+    const initialInterestRate = new Fixed(new BN(10).pow(new BN(18)), 18)
+
+    const vault: Vault = {
+      debtInterestRate: {
+        val: new BN('55000000000000000'),
+        scale: 18
+      },
+      accumulatedInterestRate: initialInterestRate.getDecimal(),
+      lastUpdate: new BN(0),
+      halted: false,
+      synthetic: defaultPubkey,
+      collateral: defaultPubkey,
+      collateralPriceFeed: defaultPubkey,
+      oracleType: 0,
+      openFee: defaultDecimal,
+      collateralRatio: defaultDecimal,
+      liquidationThreshold: defaultDecimal,
+      liquidationRatio: defaultDecimal,
+      liquidationPenaltyLiquidator: defaultDecimal,
+      liquidationPenaltyExchange: defaultDecimal,
+      accumulatedInterest: defaultDecimal,
+      liquidationFund: defaultPubkey,
+      collateralReserve: defaultPubkey,
+      mintAmount: defaultDecimal,
+      collateralAmount: defaultDecimal,
+      maxBorrow: defaultDecimal,
+      vaultType: 0
+    }
+
+    const vaultEntry: VaultEntry = {
+      lastAccumulatedInterestRate: initialInterestRate.getDecimal(),
+      syntheticAmount: syntheticBorrowedSupply.getDecimal(),
+      owner: defaultPubkey,
+      vault: defaultPubkey,
+      collateralAmount: defaultDecimal
+    }
+
+    const timestamp = new BN(430)
+
+    adjustVaultInterest(vault, timestamp)
+    const amountAfterAdjustment = adjustVaultEntryInterestDebt(vault, vaultEntry)
+
+    const expectedSupplyIncrease = new Fixed(new BN(146507), syntheticTotalSupply.scale)
+    const expectedSyntheticBorrowedSupply = syntheticBorrowedSupply.add(expectedSupplyIncrease)
+
+    assert.equal(amountAfterAdjustment.toString(), expectedSyntheticBorrowedSupply.toString())
   })
 })

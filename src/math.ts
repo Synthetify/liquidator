@@ -1,8 +1,8 @@
 import { BN } from '@project-serum/anchor'
-import { Decimal, Vault, VaultEntry } from '@synthetify/sdk/lib/exchange'
+import { Decimal, Synthetic, Vault, VaultEntry } from '@synthetify/sdk/lib/exchange'
 import { assert } from 'console'
 
-export const adjustVaultInterest = async (
+export const adjustVaultInterest = (
   vault: Vault,
   timestamp: BN = new BN(Date.now()).divn(1000)
 ) => {
@@ -23,20 +23,23 @@ export const adjustVaultInterest = async (
   }
 }
 
-const powDecimal = async (base: Decimal, exp: BN) => {
-  const one = new BN(10).pow(new BN(base.scale))
-}
+export const adjustVaultEntryInterestDebt = (vault: Vault, entry: VaultEntry) => {
+  const interestDenominator = Fixed.fromDecimal(entry.lastAccumulatedInterestRate)
+  const interestNominator = Fixed.fromDecimal(vault.accumulatedInterestRate)
 
-const mulDecimal = async (first: Decimal, second: Decimal) => {
-  assert()
-}
+  if (interestDenominator.isEqual(interestNominator)) return
 
+  const interestDebtDiff = interestNominator.div(interestDenominator)
+  const newSyntheticAmount = Fixed.fromDecimal(entry.syntheticAmount).mulUp(interestDebtDiff)
+
+  return newSyntheticAmount
+}
 export class Fixed {
   val: BN
   scale: number
 
   constructor(val: BN, scale: number) {
-    this.val = val.muln(1) // copy
+    this.val = val.clone()
     this.scale = scale
   }
 
@@ -46,7 +49,7 @@ export class Fixed {
 
   getDecimal() {
     return {
-      val: this.val,
+      val: this.val.clone(),
       scale: this.scale
     }
   }
@@ -87,6 +90,13 @@ export class Fixed {
 
   mul(other: Fixed) {
     return new Fixed(this.val.mul(other.val).div(other.getDenominator()), this.scale)
+  }
+
+  mulUp(other: Fixed) {
+    return new Fixed(
+      this.val.mul(other.val).add(other.getDenominator().subn(1)).div(other.getDenominator()),
+      this.scale
+    )
   }
 
   div(other: Fixed) {
