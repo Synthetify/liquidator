@@ -1,7 +1,7 @@
 import { Connection, Account, clusterApiUrl, PublicKey } from '@solana/web3.js'
 import { Provider, BN } from '@project-serum/anchor'
 import { Network, DEV_NET, MAIN_NET } from '@synthetify/sdk/lib/network'
-import { Exchange, ExchangeState } from '@synthetify/sdk/lib/exchange'
+import { Exchange, ExchangeState, Vault } from '@synthetify/sdk/lib/exchange'
 import { ACCURACY } from '@synthetify/sdk/lib/utils'
 import { Token, TOKEN_PROGRAM_ID } from '@solana/spl-token'
 import { createAccountsOnAllCollaterals } from './utils'
@@ -9,6 +9,7 @@ import { cyan, yellow } from 'colors'
 import { Prices } from './prices'
 import { Synchronizer } from './synchronizer'
 import { fetchVaultEntries, fetchVaults } from './fetchers'
+import { adjustVaultEntryInterestDebt, adjustVaultInterest, calculateBorrowLimit } from './math'
 
 const XUSD_BEFORE_WARNING = new BN(100).pow(new BN(ACCURACY))
 const CHECK_ALL_INTERVAL = 60 * 60 * 1000
@@ -59,17 +60,35 @@ const main = async () => {
   if (xUSDAccount.amount.lt(XUSD_BEFORE_WARNING))
     console.warn(yellow(`Account is low on xUSD (${xUSDAccount.amount.toString()})`))
 
-  await loop()
+  await loop(prices)
 }
 
-const loop = async () => {
+const loop = async (prices: Prices) => {
+  // Fetching vaults and entries
   const entries = await fetchVaultEntries(connection, exchangeProgram)
-  const vaults = await fetchVaults(connection, exchangeProgram)
+  const fetchedVaults = await fetchVaults(connection, exchangeProgram)
 
-  console.log(vaults)
+  const vaults = new Map<string, Vault>()
+  fetchedVaults.forEach(async ({ data: vault, address: vaultAddress }) => {
+    adjustVaultInterest(vault)
+    vaults.set(vaultAddress.toString(), vault)
+  })
+
+  // updating entries
   for (const entry of entries) {
-    console.log(entry)
+    adjustVaultEntryInterestDebt(vaults.get(entry.vault.toString()), entry)
   }
+
+  for (const [_, vault] of vaults) {
+    const { oracleType } = vault
+
+    if (oracleType != 0)
+      throw new Error('Oracle not supported on on this version, please update liquidator')
+  }
+
+  entries.filter(entry => {
+    const vault = vaults.get(entry.vault.toString())
+  })
 }
 
 main()

@@ -162,7 +162,8 @@ describe('Fixed', async () => {
     const timestamp = new BN(430)
 
     adjustVaultInterest(vault, timestamp)
-    const amountAfterAdjustment = adjustVaultEntryInterestDebt(vault, vaultEntry)
+    adjustVaultEntryInterestDebt(vault, vaultEntry)
+    const amountAfterAdjustment = Fixed.fromDecimal(vaultEntry.syntheticAmount)
 
     const expectedSupplyIncrease = new Fixed(new BN(146507), syntheticTotalSupply.scale)
     const expectedSyntheticBorrowedSupply = syntheticBorrowedSupply.add(expectedSupplyIncrease)

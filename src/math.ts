@@ -23,6 +23,42 @@ export const adjustVaultInterest = (
   }
 }
 
+export const calculateBorrowLimit = (
+  collateralAmount: Decimal,
+  collateralPrice: Decimal,
+  collateralRatio: Decimal,
+  syntheticScale: number
+) => {
+  const collateralValue = amountToValue(collateralAmount, collateralPrice)
+  const maxDebt = collateralValue.mul(collateralRatio.val).div(tenTo(collateralRatio.scale))
+  return valueToAmount(maxDebt, collateralPrice, syntheticScale)
+}
+
+const amountToValue = (amount: Decimal, price: Decimal) => {
+  const scaleDiff = amount.scale + price.scale - 6
+  return price.val.mul(amount.val).div(tenTo(scaleDiff))
+}
+
+const valueToAmount = (value: BN, price: Decimal, scale: number) => {
+  const scaleDiff = 6 - price.scale - scale
+
+  if (scaleDiff > 0) {
+    return {
+      val: value.div(price.val).div(tenTo(scaleDiff)),
+      scale
+    }
+  } else {
+    return {
+      val: value.mul(tenTo(scaleDiff)).div(price.val),
+      scale
+    }
+  }
+}
+
+const tenTo = (scale: number) => {
+  return new BN(10).pow(new BN(scale))
+}
+
 export const adjustVaultEntryInterestDebt = (vault: Vault, entry: VaultEntry) => {
   const interestDenominator = Fixed.fromDecimal(entry.lastAccumulatedInterestRate)
   const interestNominator = Fixed.fromDecimal(vault.accumulatedInterestRate)
@@ -32,8 +68,10 @@ export const adjustVaultEntryInterestDebt = (vault: Vault, entry: VaultEntry) =>
   const interestDebtDiff = interestNominator.div(interestDenominator)
   const newSyntheticAmount = Fixed.fromDecimal(entry.syntheticAmount).mulUp(interestDebtDiff)
 
+  entry.syntheticAmount = newSyntheticAmount.getDecimal()
   return newSyntheticAmount
 }
+
 export class Fixed {
   val: BN
   scale: number
