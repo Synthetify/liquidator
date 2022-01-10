@@ -1,5 +1,5 @@
 import { Idl } from '@project-serum/anchor'
-import { Connection, Account, PublicKey, AccountInfo } from '@solana/web3.js'
+import { Connection, PublicKey, AccountInfo } from '@solana/web3.js'
 import {
   ExchangeAccount,
   AssetsList,
@@ -34,7 +34,12 @@ export const fetchVaults = async (connection: Connection, exchangeProgram: Publi
     filters: [{ dataSize: 376 + 8 }]
   })
 
-  return accounts.map(({ account }) => parseVault(account))
+  return accounts.map(({ account, pubkey }): Account<Vault> => {
+    return {
+      data: parseVault(account),
+      address: pubkey
+    }
+  })
 }
 
 export const parseUser = (account: AccountInfo<Buffer>) =>
@@ -45,3 +50,8 @@ export const parseVaultEntry = (account: AccountInfo<Buffer>) =>
 
 export const parseVault = (account: AccountInfo<Buffer>) =>
   coder.decode<Vault>('Vault', account.data)
+
+export interface Account<T> {
+  data: T
+  address: PublicKey
+}
