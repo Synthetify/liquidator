@@ -6,8 +6,8 @@ import { ORACLE_OFFSET } from '@synthetify/sdk'
 import { toDecimal } from '@synthetify/sdk/lib/utils'
 
 export class Prices {
-  private connection: Connection
   public assetsList: AssetsList
+  private connection: Connection
 
   private constructor(connection: Connection, assetsList: AssetsList) {
     this.connection = connection
@@ -15,7 +15,7 @@ export class Prices {
 
     // Subscribe to oracle updates
     this.assetsList.assets.forEach(({ feedAddress }, index) => {
-      connection.onAccountChange(feedAddress, (accountInfo) => {
+      connection.onAccountChange(feedAddress, accountInfo => {
         const { price } = parsePriceData(accountInfo.data)
         this.assetsList.assets[index].price = toDecimal(
           new BN(price * 10 ** ORACLE_OFFSET),
@@ -28,6 +28,7 @@ export class Prices {
   public static async build<T>(connection: Connection, assetsList: AssetsList) {
     await Promise.all(
       assetsList.assets.map(async ({ feedAddress }, index) => {
+        // don't update the price of USD
         if (index == 0) return
         const account = await connection.getAccountInfo(feedAddress)
 

@@ -1,4 +1,4 @@
-import { Connection, Account, clusterApiUrl, PublicKey } from '@solana/web3.js'
+import { Connection, Account, Keypair } from '@solana/web3.js'
 import { Provider, BN } from '@project-serum/anchor'
 import { Network, DEV_NET, MAIN_NET } from '@synthetify/sdk/lib/network'
 import { AssetsList, Exchange, ExchangeAccount, ExchangeState } from '@synthetify/sdk/lib/exchange'
@@ -17,7 +17,7 @@ const NETWORK = Network.MAIN
 const provider = Provider.local()
 // @ts-expect-error
 const wallet = provider.wallet.payer as Account
-const connection = new Connection(clusterApiUrl('mainnet-beta'), 'confirmed')
+const connection = new Connection('https://ssc-dao.genesysgo.net', 'recent')
 const { exchange: exchangeProgram, exchangeAuthority } = MAIN_NET
 
 const main = async () => {
@@ -38,7 +38,10 @@ const main = async () => {
     await exchange.getState()
   )
 
-  const prices = new Prices(connection, await exchange.getAssetsList(state.account.assetsList))
+  const prices = await Prices.build(
+    connection,
+    await exchange.getAssetsList(state.account.assetsList)
+  )
 
   console.log('Assuring accounts on every collateral..')
   const collateralAccounts = await createAccountsOnAllCollaterals(
