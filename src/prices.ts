@@ -53,9 +53,9 @@ export class Prices {
       assetAddress.equals(address)
     )?.assetIndex
 
-    const assetIndex = foundCollateral != undefined ? foundCollateral : foundSynthetic
+    const assetIndex = foundCollateral !== undefined ? foundCollateral : foundSynthetic
 
-    if (assetIndex) {
+    if (assetIndex === undefined) {
       throw new Error(`Could not find price for ${address}`)
     }
 
