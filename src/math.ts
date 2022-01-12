@@ -1,5 +1,7 @@
 import { BN } from '@project-serum/anchor'
+import { ORACLE_OFFSET } from '@synthetify/sdk'
 import { Decimal, Synthetic, Vault, VaultEntry } from '@synthetify/sdk/lib/exchange'
+import { toDecimal } from '@synthetify/sdk/lib/utils'
 import { assert } from 'console'
 
 export const adjustVaultInterest = (
@@ -25,37 +27,38 @@ export const adjustVaultInterest = (
 
 export const calculateBorrowLimit = (
   collateralAmount: Decimal,
-  collateralPrice: Decimal,
+  collateralPrice: BN,
   collateralRatio: Decimal,
+  syntheticPrice: BN,
   syntheticScale: number
 ) => {
   const collateralValue = amountToValue(collateralAmount, collateralPrice)
   const maxDebt = collateralValue.mul(collateralRatio.val).div(tenTo(collateralRatio.scale))
-  return valueToAmount(maxDebt, collateralPrice, syntheticScale)
+  return valueToAmount(maxDebt, syntheticPrice, syntheticScale)
 }
 
-const amountToValue = (amount: Decimal, price: Decimal) => {
-  const scaleDiff = amount.scale + price.scale - 6
-  return price.val.mul(amount.val).div(tenTo(scaleDiff))
+export const amountToValue = (amount: Decimal, price: BN) => {
+  const scaleDiff = amount.scale + ORACLE_OFFSET - 6
+  return price.mul(amount.val).div(tenTo(scaleDiff))
 }
 
-const valueToAmount = (value: BN, price: Decimal, scale: number) => {
-  const scaleDiff = 6 - price.scale - scale
+export const valueToAmount = (value: BN, price: BN, scale: number) => {
+  const scaleDiff = 6 - ORACLE_OFFSET - scale
 
   if (scaleDiff > 0) {
     return {
-      val: value.div(price.val).div(tenTo(scaleDiff)),
+      val: value.div(price).div(tenTo(scaleDiff)),
       scale
     }
   } else {
     return {
-      val: value.mul(tenTo(scaleDiff)).div(price.val),
+      val: value.mul(tenTo(scaleDiff)).div(price),
       scale
     }
   }
 }
 
-const tenTo = (scale: number) => {
+export const tenTo = (scale: number) => {
   return new BN(10).pow(new BN(scale))
 }
 
@@ -70,6 +73,29 @@ export const adjustVaultEntryInterestDebt = (vault: Vault, entry: VaultEntry) =>
 
   entry.syntheticAmount = newSyntheticAmount.getDecimal()
   return newSyntheticAmount
+}
+
+export const getAmountForLiquidation = (
+  entry: VaultEntry,
+  vault: Vault,
+  collateralPrice: BN,
+  syntheticPrice: BN
+): Decimal => {
+  const amountLiquidationLimit = calculateBorrowLimit(
+    entry.collateralAmount,
+    collateralPrice,
+    vault.liquidationThreshold,
+    syntheticPrice,
+    entry.syntheticAmount.scale
+  )
+
+  if (amountLiquidationLimit.val.gt(entry.syntheticAmount.val))
+    return toDecimal(new BN(0), entry.syntheticAmount.scale)
+
+  const value = amountToValue(entry.syntheticAmount, syntheticPrice)
+  return value.lt(new BN(1e6))
+    ? entry.syntheticAmount
+    : mulDecimal(entry.syntheticAmount, vault.liquidationRatio)
 }
 
 export class Fixed {
@@ -162,4 +188,12 @@ export class Fixed {
 
     return result
   }
+}
+
+export const mulDecimal = (lhs, rhs) => {
+  return toDecimal(lhs.val.mul(rhs.val).div(getDenominator(rhs)), lhs.scale)
+}
+
+export const getDenominator = (decimal: Decimal) => {
+  return tenTo(decimal.scale)
 }
