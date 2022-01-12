@@ -1,12 +1,6 @@
 import { Idl } from '@project-serum/anchor'
 import { Connection, Account, PublicKey, AccountInfo } from '@solana/web3.js'
-import {
-  ExchangeAccount,
-  AssetsList,
-  ExchangeState,
-  Exchange,
-  VaultEntry
-} from '@synthetify/sdk/lib/exchange'
+import { ExchangeAccount, AssetsList, ExchangeState, Exchange } from '@synthetify/sdk/lib/exchange'
 import EXCHANGE_IDL from '../exchange.json'
 import { AccountsCoder, BN } from '@project-serum/anchor'
 import { calculateDebt, calculateUserMaxDebt } from '@synthetify/sdk/lib/utils'

@@ -44,7 +44,7 @@ export class Prices {
     return new Prices(connection, assetsList)
   }
 
-  async getPrice(address: PublicKey): Promise<Decimal> {
+  getPriceFor(address: PublicKey): Decimal {
     const foundCollateral = this.assetsList.collaterals.find(({ collateralAddress }) =>
       collateralAddress.equals(address)
     )?.assetIndex

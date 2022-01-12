@@ -1,9 +1,10 @@
 import { BN } from '@project-serum/anchor'
 import { assert } from 'chai'
-import { adjustVaultEntryInterestDebt, Fixed } from '../src/math'
+import { adjustVaultEntryInterestDebt, Fixed, mulDecimal } from '../src/math'
 import { Decimal, Synthetic, Vault, VaultEntry } from '@synthetify/sdk/lib/exchange'
 import { PublicKey } from '@solana/web3.js'
 import { adjustVaultInterest } from '../src/math'
+import { toDecimal } from '@synthetify/sdk/lib/utils'
 
 describe('Fixed', async () => {
   it('create', async () => {
@@ -39,6 +40,16 @@ describe('Fixed', async () => {
     const expected = new Fixed(new BN(53), 3)
 
     assert.equal(result.toString(), expected.toString())
+  })
+
+  it('decimal', async () => {
+    const decimal = toDecimal(new BN(1234), 3)
+    const by = toDecimal(new BN(4321), 5)
+    const result = mulDecimal(decimal, by)
+    const expected = toDecimal(new BN(53), 3)
+
+    assert.equal(result.val.toString(), expected.val.toString())
+    assert.equal(result.scale, expected.scale)
   })
 
   it('mulUp', () => {
