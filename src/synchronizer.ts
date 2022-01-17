@@ -20,9 +20,13 @@ export class Synchronizer<T> {
   }
 
   public static async build<T>(connection: Connection, address: PublicKey, nameInIDL: string) {
-    const account = await connection.getAccountInfo(address)
-    const data = coder.decode<T>(nameInIDL, account.data)
-    return new Synchronizer<T>(connection, address, nameInIDL, data)
+    const initialAccount = await connection.getAccountInfo(address)
+
+    const data = await connection.getAccountInfo(address)
+    if (data == null) throw new Error('invalid account')
+
+    const initialData = coder.decode<T>(nameInIDL, initialAccount.data)
+    return new Synchronizer<T>(connection, address, nameInIDL, initialData)
   }
 
   private updateFromAccountInfo(account: AccountInfo<Buffer>) {

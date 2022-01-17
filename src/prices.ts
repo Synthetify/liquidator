@@ -1,7 +1,7 @@
 import { Connection, PublicKey } from '@solana/web3.js'
 import { parsePriceData } from '@pythnetwork/client'
 import { AssetsList, Decimal } from '@synthetify/sdk/lib/exchange'
-import { BN } from '@project-serum/anchor'
+import { AccountsCoder, BN } from '@project-serum/anchor'
 import { ORACLE_OFFSET } from '@synthetify/sdk'
 import { toDecimal } from '@synthetify/sdk/lib/utils'
 
@@ -25,13 +25,14 @@ export class Prices {
     })
   }
 
-  static async build(connection: Connection, assetsList: AssetsList): Promise<Prices> {
+  public static async build<T>(connection: Connection, assetsList: AssetsList) {
     await Promise.all(
       assetsList.assets.map(async ({ feedAddress }, index) => {
-        // don't update the price of usd
-        if (index === 0) return
-
+        // don't update the price of USD
+        if (index == 0) return
         const account = await connection.getAccountInfo(feedAddress)
+
+        if (account == null) throw new Error('invalid account')
         const { price } = parsePriceData(account.data)
 
         assetsList.assets[index].price = toDecimal(
