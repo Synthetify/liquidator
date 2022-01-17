@@ -21,14 +21,18 @@ import { createAccountsOnAllCollaterals, U64_MAX } from './utils'
 const XUSD_BEFORE_WARNING = new BN(100).pow(new BN(ACCURACY))
 const CHECK_ALL_INTERVAL = 60 * 60 * 1000
 const CHECK_AT_RISK_INTERVAL = 5 * 60 * 1000
-const NETWORK = Network.DEV
+const NETWORK = Network.MAIN
 
 const provider = Provider.local()
 // @ts-expect-error
 const wallet = provider.wallet.payer as Account
-// const connection = new Connection('https://ssc-dao.genesysgo.net', 'recent')
-const connection = new Connection('https://api.devnet.solana.com', 'recent')
-const { exchange: exchangeProgram, exchangeAuthority } = DEV_NET
+const connection = new Connection('https://ssc-dao.genesysgo.net', 'recent')
+// let connection = new Connection('https://psytrbhymqlkfrhudd.dev.genesysgo.net:8899', {
+//   wsEndpoint: 'wss://psytrbhymqlkfrhudd.dev.genesysgo.net:8900',
+//   commitment: 'recent'
+// })
+
+const { exchange: exchangeProgram, exchangeAuthority } = MAIN_NET
 let exchange: Exchange
 let xUSDToken: Token
 let state: Synchronizer<ExchangeState>
@@ -64,7 +68,7 @@ const main = async () => {
   if (xUSDAccount.amount.lt(XUSD_BEFORE_WARNING))
     console.warn(yellow(`Account is low on xUSD (${xUSDAccount.amount.toString()})`))
 
-  setInterval(loop, 10 * 60 * 5)
+  setInterval(loop, 10 * 1000)
 }
 
 const loop = async () => {
@@ -146,15 +150,14 @@ const loop = async () => {
     console.log('Preparing synthetic for liquidation..')
 
     // needed value + 2% to account for swap fee and price fluctuations
-    const value = amountToValue(amount, syntheticPrice)
-
     const neededAmount = toDecimal(
       amount.val.muln(102).divn(100).sub(syntheticAccount.amount),
       amount.scale
     )
 
     // Minimum amount that can be traded on synthetify
-    const swapAmount = neededAmount.val.gt(new BN(1000)) ? neededAmount.val : new BN(1001)
+    const value = amountToValue(amount, syntheticPrice)
+    const swapAmount = value.gt(new BN(1000)) ? value : new BN(1001)
 
     if (swapAmount.gt(xUSDAccount.amount)) throw new Error('not enough xUSD')
 
