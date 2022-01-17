@@ -1,9 +1,9 @@
-import { Connection, Account, clusterApiUrl, PublicKey } from '@solana/web3.js'
+import { Connection, Account, clusterApiUrl, PublicKey, Transaction } from '@solana/web3.js'
 import { Provider, BN } from '@project-serum/anchor'
 import { Network, DEV_NET, MAIN_NET } from '@synthetify/sdk/lib/network'
-import { Exchange, ExchangeState, Vault } from '@synthetify/sdk/lib/exchange'
-import { ACCURACY, DEFAULT_PUBLIC_KEY, sleep, toDecimal } from '@synthetify/sdk/lib/utils'
-import { ORACLE_OFFSET } from '@synthetify/sdk'
+import { AssetsList, Exchange, ExchangeState, Vault } from '@synthetify/sdk/lib/exchange'
+import { ACCURACY, DEFAULT_PUBLIC_KEY, sleep, toDecimal, tou64 } from '@synthetify/sdk/lib/utils'
+import { ORACLE_OFFSET, signAndSend } from '@synthetify/sdk'
 import { Token, TOKEN_PROGRAM_ID } from '@solana/spl-token'
 import { yellow } from 'colors'
 import { Prices } from './prices'
@@ -16,6 +16,7 @@ import {
   getAmountForLiquidation
 } from './math'
 import { parsePriceData } from '@pythnetwork/client'
+import { createAccountsOnAllCollaterals, U64_MAX } from './utils'
 
 const XUSD_BEFORE_WARNING = new BN(100).pow(new BN(ACCURACY))
 const CHECK_ALL_INTERVAL = 60 * 60 * 1000
@@ -30,6 +31,7 @@ const connection = new Connection('https://api.devnet.solana.com', 'recent')
 const { exchange: exchangeProgram, exchangeAuthority } = DEV_NET
 let exchange: Exchange
 let xUSDToken: Token
+let state: Synchronizer<ExchangeState>
 
 const main = async () => {
   console.log('Initialization')
@@ -43,7 +45,7 @@ const main = async () => {
 
   await exchange.getState()
 
-  const state = new Synchronizer<ExchangeState>(
+  state = new Synchronizer<ExchangeState>(
     connection,
     exchange.stateAddress,
     'State',
@@ -55,13 +57,6 @@ const main = async () => {
     await exchange.getAssetsList(state.account.assetsList)
   )
 
-  console.log('Assuring accounts on every collateral..')
-  const collateralAccounts = await createAccountsOnAllCollaterals(
-    wallet,
-    connection,
-    prices.assetsList
-  )
-
   const xUSDAddress = prices.assetsList.synthetics[0].assetAddress
   xUSDToken = new Token(connection, xUSDAddress, TOKEN_PROGRAM_ID, wallet)
   let xUSDAccount = await xUSDToken.getOrCreateAssociatedAccountInfo(wallet.publicKey)
@@ -69,12 +64,16 @@ const main = async () => {
   if (xUSDAccount.amount.lt(XUSD_BEFORE_WARNING))
     console.warn(yellow(`Account is low on xUSD (${xUSDAccount.amount.toString()})`))
 
-  await loop(prices)
+  setInterval(loop, 10 * 60 * 5)
 }
 
-const loop = async (prices: Prices) => {
-  // Fetching vaults and entries
+const loop = async () => {
+  const prices = await Prices.build(
+    connection,
+    await exchange.getAssetsList(state.account.assetsList)
+  )
 
+  // Fetching vaults and entries
   console.log('Fetching vaults..')
   const entries = await fetchVaultEntries(connection, exchangeProgram)
   const fetchedVaults = await fetchVaults(connection, exchangeProgram)
@@ -130,15 +129,19 @@ const loop = async (prices: Prices) => {
 
     if (amount.val.eqn(0)) continue
 
+    console.log(amount.val.toString())
+
     console.log('Found account for liquidation')
     const syntheticToken = new Token(connection, vault.synthetic, TOKEN_PROGRAM_ID, wallet)
     const collateralToken = new Token(connection, vault.collateral, TOKEN_PROGRAM_ID, wallet)
 
-    const [xUSDAccount, syntheticAccount, _] = await Promise.all([
+    const [xUSDAccount, syntheticAccount, collateralAccount] = await Promise.all([
       xUSDToken.getOrCreateAssociatedAccountInfo(wallet.publicKey),
       syntheticToken.getOrCreateAssociatedAccountInfo(wallet.publicKey),
       collateralToken.getOrCreateAssociatedAccountInfo(wallet.publicKey)
     ])
+
+    const isUsdTheSynthetic = xUSDAccount.address.equals(syntheticAccount.address)
 
     console.log('Preparing synthetic for liquidation..')
 
@@ -146,26 +149,76 @@ const loop = async (prices: Prices) => {
     const value = amountToValue(amount, syntheticPrice)
 
     const neededAmount = toDecimal(
-      amount.val.muln(101).divn(100).sub(syntheticAccount.amount),
+      amount.val.muln(102).divn(100).sub(syntheticAccount.amount),
       amount.scale
     )
 
-    if (neededAmount.val.gten(0)) {
+    // Minimum amount that can be traded on synthetify
+    const swapAmount = neededAmount.val.gt(new BN(1000)) ? neededAmount.val : new BN(1001)
+
+    if (swapAmount.gt(xUSDAccount.amount)) throw new Error('not enough xUSD')
+
+    let tx = new Transaction().add(await exchange.updatePricesInstruction(state.account.assetsList))
+
+    // Swap to the right synthetic
+    if (!isUsdTheSynthetic && neededAmount.val.gten(0)) {
       console.log('Swapping synthetics..')
 
-      const swapAmount = neededAmount.val.gt(new BN(1000)) ? neededAmount.val : new BN(1001)
-      await exchange.swap({
-        amount: swapAmount,
-        owner: wallet.publicKey,
-        tokenFor: vault.synthetic,
-        tokenIn: xUSDToken.publicKey,
-        userTokenAccountFor: syntheticAccount.address,
-        userTokenAccountIn: xUSDAccount.address
-      })
+      tx.add(
+        Token.createApproveInstruction(
+          TOKEN_PROGRAM_ID,
+          xUSDAccount.address,
+          exchange.exchangeAuthority,
+          wallet.publicKey,
+          [],
+          tou64(U64_MAX)
+        )
+      )
+      tx.add(
+        await exchange.swapInstruction({
+          amount: swapAmount,
+          owner: wallet.publicKey,
+          tokenFor: vault.synthetic,
+          tokenIn: xUSDToken.publicKey,
+          userTokenAccountFor: syntheticAccount.address,
+          userTokenAccountIn: xUSDAccount.address
+        })
+      )
     }
+
+    console.log('Liquidating..')
+
+    tx.add(
+      Token.createApproveInstruction(
+        TOKEN_PROGRAM_ID,
+        syntheticAccount.address,
+        exchange.exchangeAuthority,
+        wallet.publicKey,
+        [],
+        tou64(U64_MAX)
+      )
+    )
+
+    // The liquidation itself
+    tx.add(
+      await exchange.liquidateVaultInstruction({
+        amount: U64_MAX,
+        collateral: vault.collateral,
+        collateralReserve: vault.collateralReserve,
+        liquidationFund: vault.liquidationFund,
+        collateralPriceFeed: vault.collateralPriceFeed,
+        synthetic: vault.synthetic,
+        liquidator: wallet.publicKey,
+        liquidatorCollateralAccount: collateralAccount.address,
+        liquidatorSyntheticAccount: syntheticAccount.address,
+        owner: entry.owner,
+        vaultType: vault.vaultType
+      })
+    )
+
+    await signAndSend(tx, [wallet], connection)
     console.log('Liquidated')
   }
-
   console.log('Finished loop')
 }
 
