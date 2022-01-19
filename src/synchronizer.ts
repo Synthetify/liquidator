@@ -1,9 +1,9 @@
 import { AccountsCoder } from '@project-serum/anchor'
-import { Idl } from '@project-serum/anchor/dist/idl'
-import EXCHANGE_IDL from '@synthetify/sdk/src/idl/exchange.json'
+import { Idl } from '@project-serum/anchor/'
+import { IDL } from '@synthetify/sdk/lib/idl/exchange'
 import { AccountInfo, Connection, PublicKey } from '@solana/web3.js'
 
-const coder = new AccountsCoder(EXCHANGE_IDL as Idl)
+const coder = new AccountsCoder(IDL as Idl)
 
 export class Synchronizer<T> {
   private connection: Connection
@@ -17,7 +17,7 @@ export class Synchronizer<T> {
     this.nameInIDL = nameInIDL
     this.account = initialAccount
 
-    this.connection.onAccountChange(this.address, (data) => this.updateFromAccountInfo(data))
+    this.connection.onAccountChange(this.address, data => this.updateFromAccountInfo(data))
   }
 
   public static async build<T>(connection: Connection, address: PublicKey, nameInIDL: string) {
@@ -25,6 +25,7 @@ export class Synchronizer<T> {
 
     const data = await connection.getAccountInfo(address)
     if (data == null) throw new Error('invalid account')
+    if (initialAccount?.data == null) throw new Error('invalid account')
 
     const initialData = coder.decode<T>(nameInIDL, initialAccount.data)
     return new Synchronizer<T>(connection, address, nameInIDL, initialData)
