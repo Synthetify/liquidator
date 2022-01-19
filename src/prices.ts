@@ -17,7 +17,7 @@ export class Prices {
     this.assetsList.assets.forEach(({ feedAddress }, index) => {
       connection.onAccountChange(feedAddress, accountInfo => {
         const { price } = parsePriceData(accountInfo.data)
-        if (price == null) throw new Error('invalid account')
+        if (price == null) return
 
         this.assetsList.assets[index].price = toDecimal(
           new BN(price * 10 ** ORACLE_OFFSET),

@@ -1,14 +1,13 @@
-import { Idl } from '@project-serum/anchor/dist/idl'
 import { Connection, Account, PublicKey, AccountInfo } from '@solana/web3.js'
 import { ExchangeAccount, AssetsList, ExchangeState, Exchange } from '@synthetify/sdk/lib/exchange'
-import EXCHANGE_IDL from '@synthetify/sdk/src/idl/exchange.json'
-import { AccountsCoder, BN } from '@project-serum/anchor'
+import { IDL } from '@synthetify/sdk/lib/idl/exchange'
+import { AccountsCoder, BN, Idl } from '@project-serum/anchor'
 import { calculateDebt, calculateUserMaxDebt } from '@synthetify/sdk/lib/utils'
 import { Token, TOKEN_PROGRAM_ID } from '@solana/spl-token'
 import { Synchronizer } from './synchronizer'
 import { blue, cyan, green, red } from 'colors'
 
-const coder = new AccountsCoder(EXCHANGE_IDL as Idl)
+const coder = new AccountsCoder(IDL as Idl)
 export const U64_MAX = new BN('18446744073709551615')
 
 export const isLiquidatable = (
@@ -33,7 +32,7 @@ export const calculateUserDebt = (
 }
 
 export const parseUser = (account: AccountInfo<Buffer>) =>
-  coder.decode<ExchangeAccount>('ExchangeAccount', account.data)
+  coder.decode<ExchangeAccount>('exchangeAccount', account.data)
 
 export const createAccountsOnAllCollaterals = async (
   wallet: Account,
