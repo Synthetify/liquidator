@@ -93,6 +93,13 @@ export const getAmountForLiquidation = (
     return toDecimal(new BN(0), entry.syntheticAmount.scale)
 
   const value = amountToValue(entry.syntheticAmount, syntheticPrice)
+  const coll = amountToValue(entry.collateralAmount, collateralPrice)
+
+  if (value.gt(coll)) {
+    console.log(`toxic: ${value.sub(coll.muln(107).divn(100))}`)
+    return toDecimal(new BN(0), entry.syntheticAmount.scale)
+  }
+
   return value.lt(new BN(1e6))
     ? entry.syntheticAmount
     : mulDecimal(entry.syntheticAmount, vault.liquidationRatio)

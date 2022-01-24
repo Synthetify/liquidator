@@ -1,7 +1,14 @@
-import { Connection, Account, clusterApiUrl, PublicKey, Transaction } from '@solana/web3.js'
-import { Provider, BN } from '@project-serum/anchor'
+import {
+  Connection,
+  Account,
+  clusterApiUrl,
+  PublicKey,
+  Transaction,
+  Keypair
+} from '@solana/web3.js'
+import { Provider, BN, Wallet } from '@project-serum/anchor'
 import { Network, DEV_NET, MAIN_NET } from '@synthetify/sdk/lib/network'
-import { AssetsList, Exchange, ExchangeState, Vault } from '@synthetify/sdk/lib/exchange'
+import { Exchange, ExchangeState, Vault } from '@synthetify/sdk/lib/exchange'
 import { ACCURACY, DEFAULT_PUBLIC_KEY, sleep, toDecimal, tou64 } from '@synthetify/sdk/lib/utils'
 import { ORACLE_OFFSET, signAndSend } from '@synthetify/sdk'
 import { Token, TOKEN_PROGRAM_ID } from '@solana/spl-token'
@@ -16,21 +23,31 @@ import {
   getAmountForLiquidation
 } from './math'
 import { parsePriceData } from '@pythnetwork/client'
-import { createAccountsOnAllCollaterals, U64_MAX } from './utils'
+import { U64_MAX } from './utils'
+
+const insideCI = process.env.PRIV_KEY !== undefined
+const secretWallet = insideCI
+  ? new Wallet(
+      Keypair.fromSecretKey(new Uint8Array(process.env.PRIV_KEY.split(',').map(a => Number(a))))
+    )
+  : undefined
 
 const XUSD_BEFORE_WARNING = new BN(100).pow(new BN(ACCURACY))
 const CHECK_ALL_INTERVAL = 60 * 60 * 1000
 const CHECK_AT_RISK_INTERVAL = 5 * 60 * 1000
 const NETWORK = Network.MAIN
 
-const provider = Provider.local()
-// @ts-expect-error
-const wallet = provider.wallet.payer as Account
 const connection = new Connection('https://ssc-dao.genesysgo.net', 'recent')
 // let connection = new Connection('https://psytrbhymqlkfrhudd.dev.genesysgo.net:8899', {
 //   wsEndpoint: 'wss://psytrbhymqlkfrhudd.dev.genesysgo.net:8900',
 //   commitment: 'recent'
 // })
+const provider = insideCI
+  ? new Provider(connection, secretWallet, { commitment: 'recent' })
+  : Provider.local()
+
+// @ts-expect-error
+const wallet = provider.wallet.payer as Account
 
 const { exchange: exchangeProgram, exchangeAuthority } = MAIN_NET
 let exchange: Exchange
@@ -68,7 +85,11 @@ const main = async () => {
   if (xUSDAccount.amount.lt(XUSD_BEFORE_WARNING))
     console.warn(yellow(`Account is low on xUSD (${xUSDAccount.amount.toString()})`))
 
-  setInterval(loop, 10 * 1000)
+  if (insideCI) {
+    await loop()
+  } else {
+    setInterval(loop, 10 * 1000)
+  }
 }
 
 const loop = async () => {
@@ -222,7 +243,7 @@ const loop = async () => {
     await signAndSend(tx, [wallet], connection)
     console.log('Liquidated')
   }
-  console.log('Finished loop')
+  console.log(`Finished${insideCI ? '' : ' loop'}`)
 }
 
 main()
