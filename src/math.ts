@@ -96,7 +96,7 @@ export const getAmountForLiquidation = (
   const coll = amountToValue(entry.collateralAmount, collateralPrice)
 
   if (value.gt(coll)) {
-    console.log(`toxic: ${value.sub(coll.muln(105).divn(100))}`)
+    console.log(`toxic: ${value.sub(coll.muln(105).divn(100)).toNumber() / 1e6}`)
     return toDecimal(new BN(0), entry.syntheticAmount.scale)
   }
 

@@ -1,6 +1,6 @@
 import { Connection, Account, PublicKey, AccountInfo, Transaction } from '@solana/web3.js'
 import { signAndSend, ORACLE_OFFSET } from '@synthetify/sdk'
-import { BN } from '@project-serum/anchor'
+import { BN, AccountsCoder, Idl } from '@project-serum/anchor'
 import { Token, TOKEN_PROGRAM_ID } from '@solana/spl-token'
 import { Synchronizer } from './synchronizer'
 import { blue, cyan, green, red } from 'colors'
@@ -23,6 +23,7 @@ import {
   toDecimal,
   tou64
 } from '@synthetify/sdk/lib/utils'
+import { IDL } from '@synthetify/sdk/lib/idl/exchange'
 
 export const U64_MAX = new BN('18446744073709551615')
 
@@ -137,10 +138,12 @@ export const getAccountsAtRisk = async (
   let atRisk: UserWithAddress[] = []
   let markedCounter = 0
 
+  const coder = new AccountsCoder(IDL as Idl)
+
   for (const user of accounts) {
-    const liquidatable = isLiquidatable(state.account, assetsList, parseUser(user.account))
+    const liquidatable = isLiquidatable(state.account, assetsList, parseUser(user.account, coder))
     if (liquidatable) {
-      const exchangeAccount = parseUser(user.account)
+      const exchangeAccount = parseUser(user.account, coder)
       atRisk.push({ address: user.pubkey, data: exchangeAccount })
     }
   }
