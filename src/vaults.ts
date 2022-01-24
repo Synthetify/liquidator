@@ -26,11 +26,13 @@ import { parsePriceData } from '@pythnetwork/client'
 import { U64_MAX } from './utils'
 
 const insideCI = process.env.PRIV_KEY !== undefined
-const secretWallet = insideCI
-  ? new Wallet(
-      Keypair.fromSecretKey(new Uint8Array(process.env.PRIV_KEY.split(',').map(a => Number(a))))
-    )
-  : undefined
+const secretWallet = new Wallet(
+  insideCI
+    ? Keypair.fromSecretKey(
+        new Uint8Array((process.env.PRIV_KEY ?? '').split(',').map(a => Number(a)))
+      )
+    : Keypair.generate()
+)
 
 const XUSD_BEFORE_WARNING = new BN(100).pow(new BN(ACCURACY))
 const CHECK_ALL_INTERVAL = 60 * 60 * 1000
@@ -113,7 +115,7 @@ const loop = async () => {
   for (const entry of entries) {
     if (!vaults.has(entry.vault.toString())) continue
 
-    adjustVaultEntryInterestDebt(vaults.get(entry.vault.toString()), entry)
+    adjustVaultEntryInterestDebt(vaults.get(entry.vault.toString()) as Vault, entry)
   }
   console.log(`Fetched ${entries.length} Entries from ${fetchedVaults.length} Vaults`)
 
@@ -128,8 +130,11 @@ const loop = async () => {
       if (!collateralPriceFeed.equals(DEFAULT_PUBLIC_KEY)) {
         const account = await connection.getAccountInfo(collateralPriceFeed)
 
+        if (account === null) throw new Error("Couldn't fetch price")
+
         const { price: fetchedPrice } = parsePriceData(account.data)
 
+        if (fetchedPrice === undefined) throw new Error("Couldn't fetch price")
         price = fetchedPrice
       }
 
@@ -147,8 +152,8 @@ const loop = async () => {
   for (const entry of entries) {
     if (!vaults.has(entry.vault.toString())) continue
 
-    const vault = vaults.get(entry.vault.toString())
-    const collateralPrice = collateralPrices.get(vault.collateralPriceFeed.toString())
+    const vault = vaults.get(entry.vault.toString()) as Vault
+    const collateralPrice = collateralPrices.get(vault.collateralPriceFeed.toString()) as BN
     const syntheticPrice = prices.getPriceFor(vault.synthetic).val
     const amount = getAmountForLiquidation(entry, vault, collateralPrice, syntheticPrice)
 

@@ -32,7 +32,7 @@ const main = async () => {
   const state = new Synchronizer<ExchangeState>(
     connection,
     exchange.stateAddress,
-    'State',
+    'state',
     await exchange.getState()
   )
 
