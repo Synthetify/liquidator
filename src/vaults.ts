@@ -77,7 +77,6 @@ const main = async () => {
     connection,
     await exchange.getAssetsList(state.account.assetsList)
   )
-
   const xUSDAddress = prices.assetsList.synthetics[0].assetAddress
   xUSDToken = new Token(connection, xUSDAddress, TOKEN_PROGRAM_ID, wallet)
   let xUSDAccount = await xUSDToken.getOrCreateAssociatedAccountInfo(wallet.publicKey)
