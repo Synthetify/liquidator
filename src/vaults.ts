@@ -35,8 +35,6 @@ const secretWallet = new Wallet(
 )
 
 const XUSD_BEFORE_WARNING = new BN(100).pow(new BN(ACCURACY))
-const CHECK_ALL_INTERVAL = 60 * 60 * 1000
-const CHECK_AT_RISK_INTERVAL = 5 * 60 * 1000
 const NETWORK = Network.MAIN
 
 const connection = new Connection('https://ssc-dao.genesysgo.net', 'recent')
