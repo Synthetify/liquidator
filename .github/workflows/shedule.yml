@@ -4,9 +4,9 @@ on:
   schedule:
     - cron: '* * * * *'
   workflow_dispatch:
-    branches: [master]
+    branches: [master, vaults]
   pull_request:
-    branches: [master]
+    branches: [master, vaults]
 jobs:
   upload:
     runs-on: ubuntu-latest
