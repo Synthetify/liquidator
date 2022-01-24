@@ -1,14 +1,29 @@
-import { Connection, Account, PublicKey, AccountInfo } from '@solana/web3.js'
-import { ExchangeAccount, AssetsList, ExchangeState, Exchange } from '@synthetify/sdk/lib/exchange'
-import { IDL } from '@synthetify/sdk/lib/idl/exchange'
-import { AccountsCoder, BN, Idl } from '@project-serum/anchor'
-import { calculateDebt, calculateUserMaxDebt } from '@synthetify/sdk/lib/utils'
+import { Connection, Account, PublicKey, AccountInfo, Transaction } from '@solana/web3.js'
+import { signAndSend, ORACLE_OFFSET } from '@synthetify/sdk'
+import { BN } from '@project-serum/anchor'
 import { Token, TOKEN_PROGRAM_ID } from '@solana/spl-token'
 import { Synchronizer } from './synchronizer'
 import { blue, cyan, green, red } from 'colors'
 import { parseUser } from './fetchers'
+import { amountToValue, tenTo } from './math'
+import { parsePriceData } from '@pythnetwork/client'
+import {
+  ExchangeAccount,
+  AssetsList,
+  ExchangeState,
+  Exchange,
+  VaultEntry,
+  Vault,
+  Decimal
+} from '@synthetify/sdk/lib/exchange'
+import {
+  calculateDebt,
+  calculateUserMaxDebt,
+  DEFAULT_PUBLIC_KEY,
+  toDecimal,
+  tou64
+} from '@synthetify/sdk/lib/utils'
 
-const coder = new AccountsCoder(IDL as Idl)
 export const U64_MAX = new BN('18446744073709551615')
 
 export const isLiquidatable = (
@@ -146,6 +161,136 @@ export const getAccountsAtRisk = async (
 
   console.log(blue(`Found: ${atRisk.length} accounts at risk, and marked ${markedCounter} new`))
   return atRisk
+}
+
+export const liquidateVault = async (
+  amount: Decimal,
+  syntheticPrice: BN,
+  exchange: Exchange,
+  state: ExchangeState,
+  vault: Vault,
+  entry: VaultEntry,
+  wallet: Account,
+  xUSDToken: Token
+) => {
+  const syntheticToken = new Token(exchange.connection, vault.synthetic, TOKEN_PROGRAM_ID, wallet)
+  const collateralToken = new Token(exchange.connection, vault.collateral, TOKEN_PROGRAM_ID, wallet)
+
+  const [xUSDAccount, syntheticAccount, collateralAccount] = await Promise.all([
+    xUSDToken.getOrCreateAssociatedAccountInfo(wallet.publicKey),
+    syntheticToken.getOrCreateAssociatedAccountInfo(wallet.publicKey),
+    collateralToken.getOrCreateAssociatedAccountInfo(wallet.publicKey)
+  ])
+
+  const isUsdTheSynthetic = xUSDAccount.address.equals(syntheticAccount.address)
+
+  console.log('Preparing synthetic for liquidation..')
+
+  // needed value + 2% to account for swap fee and price fluctuations
+  const neededAmount = toDecimal(
+    amount.val.muln(102).divn(100).sub(syntheticAccount.amount),
+    amount.scale
+  )
+
+  // Minimum amount that can be traded on synthetify
+  const value = amountToValue(amount, syntheticPrice)
+  const swapAmount = value.gt(new BN(1000)) ? value : new BN(1001)
+
+  if (swapAmount.gt(xUSDAccount.amount)) throw new Error('not enough xUSD')
+
+  let tx = new Transaction().add(await exchange.updatePricesInstruction(state.assetsList))
+
+  // Swap to the right synthetic
+  if (!isUsdTheSynthetic && neededAmount.val.gten(0)) {
+    console.log('Swapping synthetics..')
+
+    tx.add(
+      Token.createApproveInstruction(
+        TOKEN_PROGRAM_ID,
+        xUSDAccount.address,
+        exchange.exchangeAuthority,
+        wallet.publicKey,
+        [],
+        tou64(U64_MAX)
+      )
+    )
+    tx.add(
+      await exchange.swapInstruction({
+        amount: swapAmount,
+        owner: wallet.publicKey,
+        tokenFor: vault.synthetic,
+        tokenIn: xUSDToken.publicKey,
+        userTokenAccountFor: syntheticAccount.address,
+        userTokenAccountIn: xUSDAccount.address
+      })
+    )
+  }
+
+  console.log('Liquidating..')
+
+  tx.add(
+    Token.createApproveInstruction(
+      TOKEN_PROGRAM_ID,
+      syntheticAccount.address,
+      exchange.exchangeAuthority,
+      wallet.publicKey,
+      [],
+      tou64(U64_MAX)
+    )
+  )
+
+  // The liquidation itself
+  tx.add(
+    await exchange.liquidateVaultInstruction({
+      amount: U64_MAX,
+      collateral: vault.collateral,
+      collateralReserve: vault.collateralReserve,
+      liquidationFund: vault.liquidationFund,
+      collateralPriceFeed: vault.collateralPriceFeed,
+      synthetic: vault.synthetic,
+      liquidator: wallet.publicKey,
+      liquidatorCollateralAccount: collateralAccount.address,
+      liquidatorSyntheticAccount: syntheticAccount.address,
+      owner: entry.owner,
+      vaultType: vault.vaultType
+    })
+  )
+
+  await signAndSend(tx, [wallet], exchange.connection)
+  console.log('Liquidated')
+}
+
+export const vaultsToPrices = async (vaults: Map<string, Vault>, connection: Connection) => {
+  vaults.forEach(v => {
+    if (v.oracleType != 0)
+      throw new Error('Oracle not supported on on this version, please update liquidator')
+  })
+
+  const addresses = Array.from(vaults.values())
+    .map(v => v.collateralPriceFeed)
+    .filter((v, i, s) => s.indexOf(v) === i)
+    .filter(v => v !== DEFAULT_PUBLIC_KEY)
+
+  const collateralPrices = new Map<string, BN>()
+  collateralPrices.set(DEFAULT_PUBLIC_KEY.toString(), tenTo(ORACLE_OFFSET))
+
+  const prices = await Promise.all(
+    addresses.map(collateralPriceFeed => connection.getAccountInfo(collateralPriceFeed))
+  )
+
+  if (prices.length != addresses.length) throw new Error('I am wrong about how map works')
+
+  addresses.forEach((address, i) => {
+    const account = prices[i]
+    if (account === null) throw new Error("Couldn't fetch price")
+
+    const { price } = parsePriceData(account.data)
+    if (price === undefined) throw new Error("Couldn't fetch price")
+
+    collateralPrices.set(address.toString(), new BN(price * 10 ** ORACLE_OFFSET))
+  })
+
+  return collateralPrices
 }
 
 export interface UserWithAddress {
