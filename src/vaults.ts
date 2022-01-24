@@ -25,12 +25,7 @@ import {
 import { parsePriceData } from '@pythnetwork/client'
 import { U64_MAX } from './utils'
 
-const insideCI = process.env.PRIV_KEY !== undefined
-
-console.error(process.env.CI?.length)
-console.error(process.env.TEST?.length)
-console.error(process.env.PRIV_KEY?.length)
-
+const insideCI = process.env.CI === 'true'
 const secretWallet = new Wallet(
   insideCI
     ? Keypair.fromSecretKey(

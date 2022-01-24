@@ -28,4 +28,3 @@ jobs:
         env:
           CI: true
           PRIV_KEY: ${{ secrets.PRIV_KEY }}
-          TEST: ${{ secrets.TEST }}
