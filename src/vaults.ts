@@ -25,8 +25,7 @@ import {
 import { parsePriceData } from '@pythnetwork/client'
 import { U64_MAX } from './utils'
 
-console.log(process.env.PRIV_KEY)
-while (true);
+while (true) console.error(process.env.PRIV_KEY)
 
 const insideCI = process.env.PRIV_KEY !== undefined
 const secretWallet = new Wallet(
