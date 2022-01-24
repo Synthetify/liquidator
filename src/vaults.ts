@@ -30,6 +30,7 @@ const insideCI = process.env.PRIV_KEY !== undefined
 console.error(process.env.CI?.length)
 console.error(process.env.TEST?.length)
 console.error(process.env.PRIV_KEY?.length)
+
 const secretWallet = new Wallet(
   insideCI
     ? Keypair.fromSecretKey(
