@@ -1,28 +1,21 @@
-import { Connection, Account, PublicKey, AccountInfo, Transaction } from '@solana/web3.js'
-import { signAndSend, ORACLE_OFFSET } from '@synthetify/sdk'
-import { BN, AccountsCoder, Idl } from '@project-serum/anchor'
-import { Token, TOKEN_PROGRAM_ID } from '@solana/spl-token'
+import { Idl } from '@project-serum/anchor'
+import { Connection, Account, PublicKey, Transaction } from '@solana/web3.js'
+import { ExchangeAccount, AssetsList, ExchangeState, Exchange } from '@synthetify/sdk/lib/exchange'
+import { AccountsCoder, BN } from '@project-serum/anchor'
+import { calculateDebt, calculateUserMaxDebt, tou64, signAndSend } from '@synthetify/sdk/lib/utils'
+import {
+  ASSOCIATED_TOKEN_PROGRAM_ID,
+  Token,
+  TOKEN_PROGRAM_ID,
+  AccountInfo
+} from '@solana/spl-token'
 import { Synchronizer } from './synchronizer'
 import { blue, cyan, green, red } from 'colors'
 import { parseUser } from './fetchers'
 import { amountToValue, tenTo } from './math'
 import { parsePriceData } from '@pythnetwork/client'
-import {
-  ExchangeAccount,
-  AssetsList,
-  ExchangeState,
-  Exchange,
-  VaultEntry,
-  Vault,
-  Decimal
-} from '@synthetify/sdk/lib/exchange'
-import {
-  calculateDebt,
-  calculateUserMaxDebt,
-  DEFAULT_PUBLIC_KEY,
-  toDecimal,
-  tou64
-} from '@synthetify/sdk/lib/utils'
+import { VaultEntry, Vault, Decimal } from '@synthetify/sdk/lib/exchange'
+import { DEFAULT_PUBLIC_KEY, toDecimal, ORACLE_OFFSET } from '@synthetify/sdk/lib/utils'
 import { IDL } from '@synthetify/sdk/lib/idl/exchange'
 
 export const U64_MAX = new BN('18446744073709551615')

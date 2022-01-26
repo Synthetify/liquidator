@@ -1,9 +1,17 @@
-import { Connection, Account, Keypair } from '@solana/web3.js'
+import {
+  Connection,
+  Account,
+  clusterApiUrl,
+  PublicKey,
+  Transaction,
+  Keypair
+} from '@solana/web3.js'
 import { Provider, BN, Wallet } from '@project-serum/anchor'
-import { Network, MAIN_NET, DEV_NET } from '@synthetify/sdk/lib/network'
-import { Exchange, ExchangeState, Vault } from '@synthetify/sdk/lib/exchange'
-import { ACCURACY } from '@synthetify/sdk/lib/utils'
-import { Token, TOKEN_PROGRAM_ID } from '@solana/spl-token'
+import { Network, DEV_NET, MAIN_NET } from '@synthetify/sdk/lib/network'
+import { AssetsList, Exchange, ExchangeState, Vault } from '@synthetify/sdk/lib/exchange'
+import { ACCURACY, DEFAULT_PUBLIC_KEY, sleep, toDecimal, tou64 } from '@synthetify/sdk/lib/utils'
+import { ORACLE_OFFSET, signAndSend } from '@synthetify/sdk'
+import { ASSOCIATED_TOKEN_PROGRAM_ID, Token, TOKEN_PROGRAM_ID } from '@solana/spl-token'
 import { yellow } from 'colors'
 import { Prices } from './prices'
 import { Synchronizer } from './synchronizer'
@@ -39,6 +47,8 @@ const { exchange: exchangeProgram } = MAIN_NET
 let exchange: Exchange
 let xUSDToken: Token
 let state: Synchronizer<ExchangeState>
+
+console.log('hhhhh', wallet.publicKey.toString())
 
 const main = async () => {
   console.log('Initialization')
