@@ -2,6 +2,7 @@ import { AccountsCoder } from '@project-serum/anchor'
 import { Idl } from '@project-serum/anchor/'
 import { IDL } from '@synthetify/sdk/lib/idl/exchange'
 import { AccountInfo, Connection, PublicKey } from '@solana/web3.js'
+import { sleep } from '@synthetify/sdk/lib/utils'
 
 export class Synchronizer<T> {
   private connection: Connection

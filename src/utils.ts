@@ -12,7 +12,7 @@ import {
 import { Synchronizer } from './synchronizer'
 import { blue, cyan, green, red } from 'colors'
 import { parseUser } from './fetchers'
-import { amountToValue, tenTo } from './math'
+import { amountToValue, tenTo, valueToAmount } from './math'
 import { parsePriceData } from '@pythnetwork/client'
 import { VaultEntry, Vault, Decimal } from '@synthetify/sdk/lib/exchange'
 import { DEFAULT_PUBLIC_KEY, toDecimal, ORACLE_OFFSET } from '@synthetify/sdk/lib/utils'
@@ -160,7 +160,7 @@ export const getAccountsAtRisk = async (
 }
 
 export const liquidateVault = async (
-  amount: Decimal,
+  maxAmount: Decimal,
   syntheticPrice: BN,
   exchange: Exchange,
   state: ExchangeState,
@@ -180,46 +180,66 @@ export const liquidateVault = async (
 
   const isUsdTheSynthetic = xUSDAccount.address.equals(syntheticAccount.address)
 
+  const maxUserCanAfford = isUsdTheSynthetic
+    ? xUSDAccount.amount
+    : valueToAmount(xUSDAccount.amount, syntheticPrice, entry.syntheticAmount.scale)
+        .val.muln(100)
+        .divn(103)
+        .add(syntheticAccount.amount)
+
+  console.log('amount', xUSDAccount.amount.toString())
+  console.log('token', syntheticToken.publicKey.toString())
+  console.log('max', maxUserCanAfford.toString())
+  console.log('price: ', syntheticPrice.toNumber())
+  const liquidationAmountLimited = maxUserCanAfford.lt(maxAmount.val)
+
+  const amount = liquidationAmountLimited ? toDecimal(maxUserCanAfford, maxAmount.scale) : maxAmount
+
+  console.log('amount', amount.val.toString())
+  console.log('liquidationAmountLimited', liquidationAmountLimited.toString())
+
   console.log('Preparing synthetic for liquidation..')
-
-  // needed value + 2% to account for swap fee and price fluctuations
-  const neededAmount = toDecimal(
-    amount.val.muln(102).divn(100).sub(syntheticAccount.amount),
-    amount.scale
-  )
-
-  // Minimum amount that can be traded on synthetify
-  const value = amountToValue(amount, syntheticPrice)
-  const swapAmount = value.gt(new BN(1000)) ? value : new BN(1001)
-
-  if (swapAmount.gt(xUSDAccount.amount)) throw new Error('not enough xUSD')
 
   let tx = new Transaction().add(await exchange.updatePricesInstruction(state.assetsList))
 
   // Swap to the right synthetic
-  if (!isUsdTheSynthetic && neededAmount.val.gten(0)) {
-    console.log('Swapping synthetics..')
+  if (!isUsdTheSynthetic) {
+    // needed value + 2% to account for swap fee and price fluctuations
+    const neededAmount = toDecimal(
+      amount.val.muln(102).divn(100).sub(syntheticAccount.amount),
+      amount.scale
+    )
 
-    tx.add(
-      Token.createApproveInstruction(
-        TOKEN_PROGRAM_ID,
-        xUSDAccount.address,
-        exchange.exchangeAuthority,
-        wallet.publicKey,
-        [],
-        tou64(U64_MAX)
+    // Minimum amount that can be traded on synthetify
+    const swapValue = amountToValue(neededAmount, syntheticPrice)
+    const swapAmount = swapValue.gt(new BN(1000)) ? swapValue : new BN(1001)
+
+    if (swapAmount.gt(xUSDAccount.amount)) throw new Error('not enough xUSD')
+
+    if (swapAmount.gten(0)) {
+      console.log('Swapping synthetics..')
+
+      tx.add(
+        Token.createApproveInstruction(
+          TOKEN_PROGRAM_ID,
+          xUSDAccount.address,
+          exchange.exchangeAuthority,
+          wallet.publicKey,
+          [],
+          tou64(U64_MAX)
+        )
       )
-    )
-    tx.add(
-      await exchange.swapInstruction({
-        amount: swapAmount,
-        owner: wallet.publicKey,
-        tokenFor: vault.synthetic,
-        tokenIn: xUSDToken.publicKey,
-        userTokenAccountFor: syntheticAccount.address,
-        userTokenAccountIn: xUSDAccount.address
-      })
-    )
+      tx.add(
+        await exchange.swapInstruction({
+          amount: liquidationAmountLimited ? xUSDAccount.amount : swapAmount,
+          owner: wallet.publicKey,
+          tokenFor: vault.synthetic,
+          tokenIn: xUSDToken.publicKey,
+          userTokenAccountFor: syntheticAccount.address,
+          userTokenAccountIn: xUSDAccount.address
+        })
+      )
+    }
   }
 
   console.log('Liquidating..')
@@ -238,7 +258,7 @@ export const liquidateVault = async (
   // The liquidation itself
   tx.add(
     await exchange.liquidateVaultInstruction({
-      amount: U64_MAX,
+      amount: liquidationAmountLimited ? amount.val : U64_MAX,
       collateral: vault.collateral,
       collateralReserve: vault.collateralReserve,
       liquidationFund: vault.liquidationFund,
