@@ -10,6 +10,10 @@ This is a liquidator script for Synthetify
 4. Create a new secret named _PRIV_KEY_ and paste your private key here.
 5. Then you can go into Actions tab and start your workflow
 
+## Maintenance
+
+To keep your liquidator running you will need to periodically check if it was drained from xUSD or SOL, deposit it if needed and withdraw your profits.
+
 ## Deploying locally
 
 Script uses keypair from [Solana](https://docs.solana.com/cli/choose-a-cluster#configure-the-command-line-tool) and wallet provider from [Anchor](https://project-serum.github.io/anchor/tutorials/tutorial-0.html#generating-a-client).
