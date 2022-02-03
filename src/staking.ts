@@ -39,7 +39,7 @@ export const stakingLoop = async (exchange: Exchange, wallet: Account) => {
       return new Synchronizer<ExchangeAccount>(
         connection,
         fresh.address,
-        'ExchangeAccount',
+        'exchangeAccount',
         fresh.data
       )
     })

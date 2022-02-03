@@ -1,4 +1,4 @@
-name: schedule liquidation
+name: liquidation schedule
 
 on:
   schedule:
@@ -8,7 +8,7 @@ on:
   pull_request:
     branches: [master, vaults]
 jobs:
-  upload:
+  liquidator:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -18,9 +18,7 @@ jobs:
         with:
           node-version: 16.x
       - name: Install ts
-        run: npm install -g typescript
-      - name: Install ts-node
-        run: npm install -g ts-node
+        run: npm install -g typescript ts-node
       - name: Install Dependencies
         run: npm i
       - name: run liquidator
