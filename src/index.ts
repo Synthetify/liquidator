@@ -13,13 +13,7 @@ const SCAN_INTERVAL = 1000 * 60 * 5
 
 const insideCI = process.env.CI === 'true'
 const secretWallet = new Wallet(
-  insideCI
-    ? Keypair.fromSecretKey(
-        bs58.decode(
-          '4s5o8GbjnMavvu7gvEuhH6hHc6HRs6GVWjK8bn1Eq7Pf5B7Fp7Y2R7gYUCj7yfubJtL9iBFozSaB44yAuU7PtWvB'
-        )
-      )
-    : Keypair.generate()
+  insideCI ? Keypair.fromSecretKey(bs58.decode(process?.env?.PRIV_KEY ?? '')) : Keypair.generate()
 )
 
 const connection = getConnection(NETWORK)
