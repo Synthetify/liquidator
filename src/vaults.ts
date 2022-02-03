@@ -1,32 +1,11 @@
-import {
-  Connection,
-  Account,
-  clusterApiUrl,
-  PublicKey,
-  Transaction,
-  Keypair
-} from '@solana/web3.js'
-import { Provider, BN, Wallet } from '@project-serum/anchor'
-import { Network, DEV_NET, MAIN_NET } from '@synthetify/sdk/lib/network'
-import { AssetsList, Exchange, ExchangeState, Vault } from '@synthetify/sdk/lib/exchange'
-import { ACCURACY, DEFAULT_PUBLIC_KEY, sleep, toDecimal, tou64 } from '@synthetify/sdk/lib/utils'
-import { ORACLE_OFFSET, signAndSend } from '@synthetify/sdk'
-import { ASSOCIATED_TOKEN_PROGRAM_ID, Token, TOKEN_PROGRAM_ID } from '@solana/spl-token'
-import { yellow } from 'colors'
+import { Account } from '@solana/web3.js'
+import { BN } from '@project-serum/anchor'
+import { Exchange, Vault } from '@synthetify/sdk/lib/exchange'
+import { Token, TOKEN_PROGRAM_ID } from '@solana/spl-token'
 import { Prices } from './prices'
-import { Synchronizer } from './synchronizer'
 import { fetchVaultEntries, fetchVaults } from './fetchers'
 import { adjustVaultEntryInterestDebt, adjustVaultInterest, getAmountForLiquidation } from './math'
 import { liquidateVault, vaultsToPrices } from './utils'
-
-const insideCI = process.env.CI === 'true'
-const secretWallet = new Wallet(
-  insideCI
-    ? Keypair.fromSecretKey(
-        new Uint8Array((process.env.PRIV_KEY ?? '').split(',').map(a => Number(a)))
-      )
-    : Keypair.generate()
-)
 
 export const vaultLoop = async (exchange: Exchange, wallet: Account) => {
   const state = await exchange.getState()
@@ -75,7 +54,7 @@ export const vaultLoop = async (exchange: Exchange, wallet: Account) => {
 
     await liquidateVault(amount, syntheticPrice, exchange, state, vault, entry, wallet, xUSDToken)
   }
-  console.log(`Finished${insideCI ? '' : ' loop'}`)
+  console.log(`Finished checking vaults`)
 }
 
 // main()
