@@ -28,66 +28,10 @@ const secretWallet = new Wallet(
     : Keypair.generate()
 )
 
-const XUSD_BEFORE_WARNING = new BN(100).pow(new BN(ACCURACY))
-const NETWORK = Network.MAIN
-
-const connection = new Connection('https://ssc-dao.genesysgo.net', 'recent')
-// let connection = new Connection('https://psytrbhymqlkfrhudd.dev.genesysgo.net:8899', {
-//   wsEndpoint: 'wss://psytrbhymqlkfrhudd.dev.genesysgo.net:8900',
-//   commitment: 'recent'
-// })
-const provider = insideCI
-  ? new Provider(connection, secretWallet, { commitment: 'recent' })
-  : Provider.local()
-
-// @ts-expect-error
-const wallet = provider.wallet.payer as Account
-
-const { exchange: exchangeProgram } = MAIN_NET
-let exchange: Exchange
-let xUSDToken: Token
-let state: Synchronizer<ExchangeState>
-
-const main = async () => {
-  console.log('Initialization')
-  exchange = await Exchange.build(connection, NETWORK, provider.wallet)
-
-  console.log(`Using wallet: ${wallet.publicKey}`)
-
-  await exchange.getState()
-
-  state = new Synchronizer<ExchangeState>(
-    connection,
-    exchange.stateAddress,
-    'State',
-    await exchange.getState()
-  )
-
-  const prices = await Prices.build(
-    connection,
-    await exchange.getAssetsList(state.account.assetsList)
-  )
-  const xUSDAddress = prices.assetsList.synthetics[0].assetAddress
-  xUSDToken = new Token(connection, xUSDAddress, TOKEN_PROGRAM_ID, wallet)
-  let xUSDAccount = await xUSDToken.getOrCreateAssociatedAccountInfo(wallet.publicKey)
-
-  if (xUSDAccount.amount.lt(XUSD_BEFORE_WARNING))
-    console.warn(yellow(`Account is low on xUSD (${xUSDAccount.amount.toString()})`))
-
-  await loop()
-
-  if (!insideCI) {
-    setInterval(loop, 10 * 1000)
-  } else {
-    process.exit()
-  }
-}
-
-const loop = async () => {
-  const prices = await Prices.build(
-    connection,
-    await exchange.getAssetsList(state.account.assetsList)
-  )
+export const vaultLoop = async (exchange: Exchange, wallet: Account) => {
+  const state = await exchange.getState()
+  const { connection, programId: exchangeProgram } = exchange
+  const prices = await Prices.build(connection, await exchange.getAssetsList(state.assetsList))
 
   // Fetching vaults and entries
   console.log('Fetching vaults..')
@@ -121,23 +65,17 @@ const loop = async () => {
     const syntheticPrice = prices.getPriceFor(vault.synthetic).val
     const amount = getAmountForLiquidation(entry, vault, collateralPrice, syntheticPrice)
 
+    const xUSDAddress = prices.assetsList.synthetics[0].assetAddress
+    const xUSDToken = new Token(connection, xUSDAddress, TOKEN_PROGRAM_ID, wallet)
+
     if (amount.val.eqn(0)) continue
 
     console.log('Found account for liquidation')
     console.log(amount.val.toString())
 
-    await liquidateVault(
-      amount,
-      syntheticPrice,
-      exchange,
-      state.account,
-      vault,
-      entry,
-      wallet,
-      xUSDToken
-    )
+    await liquidateVault(amount, syntheticPrice, exchange, state, vault, entry, wallet, xUSDToken)
   }
   console.log(`Finished${insideCI ? '' : ' loop'}`)
 }
 
-main()
+// main()

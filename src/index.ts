@@ -1,47 +1,71 @@
-import { Connection, Account, Keypair } from '@solana/web3.js'
-import { Provider, BN } from '@project-serum/anchor'
+import { Account, Keypair } from '@solana/web3.js'
+import { Provider, BN, Wallet } from '@project-serum/anchor'
 import { Network, DEV_NET, MAIN_NET } from '@synthetify/sdk/lib/network'
-import { AssetsList, Exchange, ExchangeAccount, ExchangeState } from '@synthetify/sdk/lib/exchange'
-import { ACCURACY, sleep } from '@synthetify/sdk/lib/utils'
+import { Exchange, ExchangeAccount, ExchangeState } from '@synthetify/sdk/lib/exchange'
+import { sleep } from '@synthetify/sdk/lib/utils'
 import { Token, TOKEN_PROGRAM_ID } from '@solana/spl-token'
-import { liquidate, getAccountsAtRisk, createAccountsOnAllCollaterals } from './utils'
+import {
+  liquidate,
+  getAccountsAtRisk,
+  createAccountsOnAllCollaterals,
+  getConnection
+} from './utils'
 import { cyan, yellow } from 'colors'
 import { Prices } from './prices'
 import { Synchronizer } from './synchronizer'
+import { vaultLoop } from './vaults'
 
-const XUSD_BEFORE_WARNING = new BN(100).pow(new BN(ACCURACY))
-const CHECK_ALL_INTERVAL = 60 * 60 * 1000
-const CHECK_AT_RISK_INTERVAL = 5 * 60 * 1000
 const NETWORK = Network.MAIN
+const SCAN_INTERVAL = 1000 * 5
 
-const provider = Provider.local()
+const insideCI = process.env.CI === 'true'
+const secretWallet = new Wallet(
+  insideCI
+    ? Keypair.fromSecretKey(
+        new Uint8Array((process.env.PRIV_KEY ?? '').split(',').map(a => Number(a)))
+      )
+    : Keypair.generate()
+)
+
+const connection = getConnection(NETWORK)
+const provider = insideCI
+  ? new Provider(connection, secretWallet, { commitment: 'recent' })
+  : Provider.local()
+
 // @ts-expect-error
 const wallet = provider.wallet.payer as Account
-const connection = new Connection('https://ssc-dao.genesysgo.net', 'recent')
-const { exchange: exchangeProgram, exchangeAuthority } = MAIN_NET
+const { exchange: exchangeProgram } = NETWORK === Network.MAIN ? MAIN_NET : DEV_NET
 
 const main = async () => {
   console.log('Initialization')
-  const exchange = await Exchange.build(
-    connection,
-    NETWORK,
-    provider.wallet,
-    exchangeAuthority,
-    exchangeProgram
-  )
+  const exchange = await Exchange.build(connection, NETWORK, provider.wallet)
+  await exchange.getState()
+
+  console.log(`Using wallet: ${wallet.publicKey}`)
+
+  await stakingLoop(exchange, wallet)
+  await vaultLoop(exchange, wallet)
+
+  if (!insideCI) {
+    setInterval(() => stakingLoop(exchange, wallet), SCAN_INTERVAL)
+    await sleep(SCAN_INTERVAL / 2)
+    setInterval(() => vaultLoop(exchange, wallet), SCAN_INTERVAL)
+  } else {
+    process.exit()
+  }
+}
+
+const stakingLoop = async (exchange: Exchange, wallet: Account) => {
   const state = new Synchronizer<ExchangeState>(
     connection,
     exchange.stateAddress,
     'state',
     await exchange.getState()
   )
-
   const prices = await Prices.build(
     connection,
     await exchange.getAssetsList(state.account.assetsList)
   )
-
-  console.log('Assuring accounts on every collateral..')
   const collateralAccounts = await createAccountsOnAllCollaterals(
     wallet,
     connection,
@@ -52,75 +76,47 @@ const main = async () => {
   const xUSDToken = new Token(connection, xUSDAddress, TOKEN_PROGRAM_ID, wallet)
   let xUSDAccount = await xUSDToken.getOrCreateAssociatedAccountInfo(wallet.publicKey)
 
-  if (xUSDAccount.amount.lt(XUSD_BEFORE_WARNING))
-    console.warn(yellow(`Account is low on xUSD (${xUSDAccount.amount.toString()})`))
-
-  // Main loop
-  let nextFullCheck = 0
-  let nextCheck = 0
-  let atRisk: Synchronizer<ExchangeAccount>[] = []
-
-  while (true) {
-    if (Date.now() > nextFullCheck + CHECK_ALL_INTERVAL) {
-      nextFullCheck = Date.now() + CHECK_ALL_INTERVAL
-      // Fetching all accounts with debt over limit
-      const newAccounts = await getAccountsAtRisk(
+  // Fetching all accounts with debt over limit
+  const atRisk = (
+    await getAccountsAtRisk(connection, exchange, exchangeProgram, state, prices.assetsList)
+  )
+    .sort((a, b) => a.data.liquidationDeadline.cmp(b.data.liquidationDeadline))
+    .map(fresh => {
+      return new Synchronizer<ExchangeAccount>(
         connection,
-        exchange,
-        exchangeProgram,
-        state,
-        prices.assetsList
+        fresh.address,
+        'ExchangeAccount',
+        fresh.data
       )
+    })
 
-      const freshAtRisk = newAccounts
-        .filter(fresh => !atRisk.some(old => old.address.equals(fresh.address)))
-        .sort((a, b) => a.data.liquidationDeadline.cmp(b.data.liquidationDeadline))
-        .map(fresh => {
-          return new Synchronizer<ExchangeAccount>(
-            connection,
-            fresh.address,
-            'ExchangeAccount',
-            fresh.data
-          )
-        })
+  const slot = new BN(await connection.getSlot())
 
-      atRisk = atRisk.concat(freshAtRisk)
-    }
+  console.log(cyan(`Liquidating suitable accounts (${atRisk.length})..`))
+  console.time('checking time')
 
-    if (Date.now() > nextCheck + CHECK_AT_RISK_INTERVAL) {
-      nextCheck = Date.now() + CHECK_AT_RISK_INTERVAL
-      const slot = new BN(await connection.getSlot())
+  for (const exchangeAccount of atRisk) {
+    // Users are sorted so we can stop checking if deadline is in the future
+    if (slot.lt(exchangeAccount.account.liquidationDeadline)) break
 
-      console.log(cyan(`Liquidating suitable accounts (${atRisk.length})..`))
-      console.time('checking time')
-
-      for (const exchangeAccount of atRisk) {
-        // Users are sorted so we can stop checking if deadline is in the future
-        if (slot.lt(exchangeAccount.account.liquidationDeadline)) break
-
-        while (true) {
-          const liquidated = await liquidate(
-            exchange,
-            exchangeAccount,
-            prices.assetsList,
-            state.account,
-            collateralAccounts,
-            wallet,
-            xUSDAccount.amount,
-            xUSDAccount.address
-          )
-          if (!liquidated) break
-          xUSDAccount = await xUSDToken.getOrCreateAssociatedAccountInfo(wallet.publicKey)
-        }
-      }
-
+    while (true) {
+      const liquidated = await liquidate(
+        exchange,
+        exchangeAccount,
+        prices.assetsList,
+        state.account,
+        collateralAccounts,
+        wallet,
+        xUSDAccount.amount,
+        xUSDAccount.address
+      )
+      if (!liquidated) break
       xUSDAccount = await xUSDToken.getOrCreateAssociatedAccountInfo(wallet.publicKey)
-      console.log('Finished checking')
-      console.timeEnd('checking time')
     }
-
-    await sleep(Math.min(nextCheck, nextFullCheck) - Date.now() + 1)
   }
+
+  console.log('Finished checking')
+  console.timeEnd('checking time')
 }
 
 main()

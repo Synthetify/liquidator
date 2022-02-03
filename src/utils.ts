@@ -17,6 +17,7 @@ import { parsePriceData } from '@pythnetwork/client'
 import { VaultEntry, Vault, Decimal } from '@synthetify/sdk/lib/exchange'
 import { DEFAULT_PUBLIC_KEY, toDecimal, ORACLE_OFFSET } from '@synthetify/sdk/lib/utils'
 import { IDL } from '@synthetify/sdk/lib/idl/exchange'
+import { Network } from '@synthetify/sdk'
 
 export const U64_MAX = new BN('18446744073709551615')
 
@@ -46,12 +47,18 @@ export const createAccountsOnAllCollaterals = async (
   connection: Connection,
   assetsList: AssetsList
 ) => {
+  const addresses = assetsList.collaterals
+    .map(({ collateralAddress }) => collateralAddress)
+    .concat([assetsList.synthetics[0].assetAddress])
+
+  const tokens = addresses.map(address => new Token(connection, address, TOKEN_PROGRAM_ID, wallet))
   const accounts = await Promise.all(
-    await assetsList.collaterals.map(({ collateralAddress }) => {
-      const token = new Token(connection, collateralAddress, TOKEN_PROGRAM_ID, wallet)
-      return token.getOrCreateAssociatedAccountInfo(wallet.publicKey)
-    })
+    tokens.map(token => token.getOrCreateAssociatedAccountInfo(wallet.publicKey))
   )
+
+  // xUSD is just here for creation
+  accounts.pop()
+
   return accounts.map(({ address }) => address)
 }
 
@@ -301,6 +308,15 @@ export const vaultsToPrices = async (vaults: Map<string, Vault>, connection: Con
   })
 
   return collateralPrices
+}
+
+export const getConnection = (network: Network) => {
+  return network === Network.MAIN
+    ? new Connection('https://ssc-dao.genesysgo.net', 'recent')
+    : new Connection('https://psytrbhymqlkfrhudd.dev.genesysgo.net:8899', {
+        wsEndpoint: 'wss://psytrbhymqlkfrhudd.dev.genesysgo.net:8900',
+        commitment: 'recent'
+      })
 }
 
 export interface UserWithAddress {
