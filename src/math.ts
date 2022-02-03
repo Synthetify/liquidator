@@ -92,11 +92,18 @@ export const getAmountForLiquidation = (
   if (amountLiquidationLimit.val.gt(entry.syntheticAmount.val))
     return toDecimal(new BN(0), entry.syntheticAmount.scale)
 
+  const penaltyMultiplier = toDecimal(
+    vault.liquidationPenaltyExchange.val
+      .add(vault.liquidationPenaltyLiquidator.val)
+      .add(tenTo(vault.liquidationPenaltyExchange.scale)),
+    vault.liquidationPenaltyExchange.scale
+  )
+  const collateralWithPenalty = mulDecimal(entry.collateralAmount, penaltyMultiplier)
   const value = amountToValue(entry.syntheticAmount, syntheticPrice)
-  const coll = amountToValue(entry.collateralAmount, collateralPrice)
+  const collateralValue = amountToValue(collateralWithPenalty, collateralPrice)
 
-  if (value.gt(coll)) {
-    console.log(`toxic: ${value.sub(coll.muln(105).divn(100)).toNumber() / 1e6}`)
+  if (value.gt(collateralValue)) {
+    console.log(`toxic: ${value.sub(collateralValue.muln(105).divn(100)).toNumber() / 1e6}`)
     return toDecimal(new BN(0), entry.syntheticAmount.scale)
   }
 

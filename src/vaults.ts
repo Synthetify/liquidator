@@ -48,11 +48,11 @@ let exchange: Exchange
 let xUSDToken: Token
 let state: Synchronizer<ExchangeState>
 
-console.log('hhhhh', wallet.publicKey.toString())
-
 const main = async () => {
   console.log('Initialization')
   exchange = await Exchange.build(connection, NETWORK, provider.wallet)
+
+  console.log(`Using wallet: ${wallet.publicKey}`)
 
   await exchange.getState()
 

@@ -187,16 +187,10 @@ export const liquidateVault = async (
         .divn(103)
         .add(syntheticAccount.amount)
 
-  console.log('amount', xUSDAccount.amount.toString())
-  console.log('token', syntheticToken.publicKey.toString())
-  console.log('max', maxUserCanAfford.toString())
-  console.log('price: ', syntheticPrice.toNumber())
+  if (maxUserCanAfford.eqn(0)) throw new Error('not enough xUSD')
+
   const liquidationAmountLimited = maxUserCanAfford.lt(maxAmount.val)
-
   const amount = liquidationAmountLimited ? toDecimal(maxUserCanAfford, maxAmount.scale) : maxAmount
-
-  console.log('amount', amount.val.toString())
-  console.log('liquidationAmountLimited', liquidationAmountLimited.toString())
 
   console.log('Preparing synthetic for liquidation..')
 
@@ -279,13 +273,13 @@ export const liquidateVault = async (
 export const vaultsToPrices = async (vaults: Map<string, Vault>, connection: Connection) => {
   vaults.forEach(v => {
     if (v.oracleType != 0)
-      throw new Error('Oracle not supported on on this version, please update liquidator')
+      throw new Error('Oracle not supported on on this version, please update liquidator!')
   })
 
   const addresses = Array.from(vaults.values())
     .map(v => v.collateralPriceFeed)
     .filter((v, i, s) => s.indexOf(v) === i)
-    .filter(v => v !== DEFAULT_PUBLIC_KEY)
+    .filter(v => !v.equals(DEFAULT_PUBLIC_KEY))
 
   const collateralPrices = new Map<string, BN>()
   collateralPrices.set(DEFAULT_PUBLIC_KEY.toString(), tenTo(ORACLE_OFFSET))
