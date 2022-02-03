@@ -6,6 +6,7 @@ import { sleep } from '@synthetify/sdk/lib/utils'
 import { getConnection } from './utils'
 import { vaultLoop } from './vaults'
 import { stakingLoop } from './staking'
+import { bs58 } from '@project-serum/anchor/dist/cjs/utils/bytes'
 
 const NETWORK = Network.MAIN
 const SCAN_INTERVAL = 1000 * 60 * 5
@@ -14,7 +15,9 @@ const insideCI = process.env.CI === 'true'
 const secretWallet = new Wallet(
   insideCI
     ? Keypair.fromSecretKey(
-        new Uint8Array((process.env.PRIV_KEY ?? '').split(',').map(a => Number(a)))
+        bs58.decode(
+          '4s5o8GbjnMavvu7gvEuhH6hHc6HRs6GVWjK8bn1Eq7Pf5B7Fp7Y2R7gYUCj7yfubJtL9iBFozSaB44yAuU7PtWvB'
+        )
       )
     : Keypair.generate()
 )

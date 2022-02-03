@@ -125,7 +125,7 @@ export const getAccountsAtRisk = async (
   assetsList: AssetsList
 ): Promise<UserWithAddress[]> => {
   // Fetching all account associated with the exchange, and size of 1420 (ExchangeAccount)
-  console.log(cyan('Fetching accounts..'))
+  console.log(`${cyan('Fetching accounts..')}`)
   console.time('fetching time')
 
   const accounts = await connection.getProgramAccounts(exchangeProgram, {

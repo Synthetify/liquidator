@@ -21,7 +21,7 @@ export const vaultLoop = async (exchange: Exchange, wallet: Account) => {
   const prices = await Prices.build(connection, await exchange.getAssetsList(state.assetsList))
 
   // Fetching vaults and entries
-  console.log('Fetching vaults..')
+  console.log('\nFetching vaults..')
   const entries = await fetchVaultEntries(connection, exchangeProgram)
   const fetchedVaults = await fetchVaults(connection, exchangeProgram)
 
