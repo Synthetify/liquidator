@@ -8,7 +8,7 @@ import { vaultLoop } from './vaults'
 import { stakingLoop } from './staking'
 
 const NETWORK = Network.MAIN
-const SCAN_INTERVAL = 1000 * 20
+const SCAN_INTERVAL = 1000 * 60 * 5
 
 const insideCI = process.env.CI === 'true'
 const secretWallet = new Wallet(
