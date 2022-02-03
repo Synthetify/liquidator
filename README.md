@@ -1,19 +1,24 @@
 # Liquidator
 
-## installation
+This is a liquidator script for Synthetify
+
+## How to setup your own liquidator
+
+1. First fork this repository to your own account
+2. You will need to go into your Phantom (or any other) wallet end export private key (preferably on a separate account).
+3. Then go to your freshly forked repository -> Settings -> [Secrets](https://docs.github.com/en/actions/security-guides/encrypted-secrets)
+4. Create a new secret named _PRIV_KEY_ and paste your private key here.
+5. Then you can go into Actions tab and start your workflow
+
+## Deploying locally
+
+Script uses keypair from [Solana](https://docs.solana.com/cli/choose-a-cluster#configure-the-command-line-tool) and wallet provider from [Anchor](https://project-serum.github.io/anchor/tutorials/tutorial-0.html#generating-a-client).
 
 Install dependencies using npm:
 
     npm i
 
 also, **ts-node** has to be installed globally.
-
-Script uses keypair set in Solana [config](https://docs.solana.com/cli/choose-a-cluster#configure-the-command-line-tool) and creates accounts on needed tokens.
-To liquidate a user xUSD is needed.
-
-## Usage
-
-### As a script
 
 To run script use:
 
@@ -22,12 +27,3 @@ To run script use:
 or:
 
     ts-node ./src/index.ts
-
-### As a Github Action
-
-Define a secret **PRIV_KEY** with values from private key separated by a comma, and run action.
-
-## How it works
-
-The script downloads all _Exchange Accounts_ (and updates when they change) to find ones that are at risk of liquidation.
-If _liquidation_deadline_ comes they are liquidated using funds from a local wallet.
