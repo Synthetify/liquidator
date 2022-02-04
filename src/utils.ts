@@ -1,13 +1,24 @@
-import { Connection, Account, PublicKey, AccountInfo } from '@solana/web3.js'
+import { Idl } from '@project-serum/anchor'
+import { Connection, Account, PublicKey, Transaction } from '@solana/web3.js'
 import { ExchangeAccount, AssetsList, ExchangeState, Exchange } from '@synthetify/sdk/lib/exchange'
-import { IDL } from '@synthetify/sdk/lib/idl/exchange'
-import { AccountsCoder, BN, Idl } from '@project-serum/anchor'
-import { calculateDebt, calculateUserMaxDebt } from '@synthetify/sdk/lib/utils'
-import { Token, TOKEN_PROGRAM_ID } from '@solana/spl-token'
+import { AccountsCoder, BN } from '@project-serum/anchor'
+import { calculateDebt, calculateUserMaxDebt, tou64, signAndSend } from '@synthetify/sdk/lib/utils'
+import {
+  ASSOCIATED_TOKEN_PROGRAM_ID,
+  Token,
+  TOKEN_PROGRAM_ID,
+  AccountInfo
+} from '@solana/spl-token'
 import { Synchronizer } from './synchronizer'
 import { blue, cyan, green, red } from 'colors'
+import { parseUser } from './fetchers'
+import { amountToValue, tenTo, valueToAmount } from './math'
+import { parsePriceData } from '@pythnetwork/client'
+import { VaultEntry, Vault, Decimal } from '@synthetify/sdk/lib/exchange'
+import { DEFAULT_PUBLIC_KEY, toDecimal, ORACLE_OFFSET } from '@synthetify/sdk/lib/utils'
+import { IDL } from '@synthetify/sdk/lib/idl/exchange'
+import { Network } from '@synthetify/sdk'
 
-const coder = new AccountsCoder(IDL as Idl)
 export const U64_MAX = new BN('18446744073709551615')
 
 export const isLiquidatable = (
@@ -31,20 +42,23 @@ export const calculateUserDebt = (
   return exchangeAccount.debtShares.mul(debt).div(state.debtShares)
 }
 
-export const parseUser = (account: AccountInfo<Buffer>) =>
-  coder.decode<ExchangeAccount>('exchangeAccount', account.data)
-
 export const createAccountsOnAllCollaterals = async (
   wallet: Account,
   connection: Connection,
   assetsList: AssetsList
 ) => {
+  const addresses = assetsList.collaterals
+    .map(({ collateralAddress }) => collateralAddress)
+    .concat([assetsList.synthetics[0].assetAddress])
+
+  const tokens = addresses.map(address => new Token(connection, address, TOKEN_PROGRAM_ID, wallet))
   const accounts = await Promise.all(
-    await assetsList.collaterals.map(({ collateralAddress }) => {
-      const token = new Token(connection, collateralAddress, TOKEN_PROGRAM_ID, wallet)
-      return token.getOrCreateAssociatedAccountInfo(wallet.publicKey)
-    })
+    tokens.map(token => token.getOrCreateAssociatedAccountInfo(wallet.publicKey))
   )
+
+  // xUSD is just here for creation
+  accounts.pop()
+
   return accounts.map(({ address }) => address)
 }
 
@@ -111,7 +125,7 @@ export const getAccountsAtRisk = async (
   assetsList: AssetsList
 ): Promise<UserWithAddress[]> => {
   // Fetching all account associated with the exchange, and size of 1420 (ExchangeAccount)
-  console.log(cyan('Fetching accounts..'))
+  console.log(`${cyan('Fetching accounts..')}`)
   console.time('fetching time')
 
   const accounts = await connection.getProgramAccounts(exchangeProgram, {
@@ -124,10 +138,12 @@ export const getAccountsAtRisk = async (
   let atRisk: UserWithAddress[] = []
   let markedCounter = 0
 
+  const coder = new AccountsCoder(IDL as Idl)
+
   for (const user of accounts) {
-    const liquidatable = isLiquidatable(state.account, assetsList, parseUser(user.account))
+    const liquidatable = isLiquidatable(state.account, assetsList, parseUser(user.account, coder))
     if (liquidatable) {
-      const exchangeAccount = parseUser(user.account)
+      const exchangeAccount = parseUser(user.account, coder)
       atRisk.push({ address: user.pubkey, data: exchangeAccount })
     }
   }
@@ -148,6 +164,46 @@ export const getAccountsAtRisk = async (
 
   console.log(blue(`Found: ${atRisk.length} accounts at risk, and marked ${markedCounter} new`))
   return atRisk
+}
+
+export const vaultsToPrices = async (vaults: Map<string, Vault>, connection: Connection) => {
+  vaults.forEach(v => {
+    if (v.oracleType != 0)
+      throw new Error('Oracle not supported on on this version, please update liquidator!')
+  })
+
+  const addresses = Array.from(vaults.values())
+    .map(v => v.collateralPriceFeed)
+    .filter((v, i, s) => s.indexOf(v) === i)
+    .filter(v => !v.equals(DEFAULT_PUBLIC_KEY))
+
+  const collateralPrices = new Map<string, BN>()
+  collateralPrices.set(DEFAULT_PUBLIC_KEY.toString(), tenTo(ORACLE_OFFSET))
+
+  const prices = await Promise.all(
+    addresses.map(collateralPriceFeed => connection.getAccountInfo(collateralPriceFeed))
+  )
+
+  addresses.forEach((address, i) => {
+    const account = prices[i]
+    if (account === null) throw new Error("Couldn't fetch price")
+
+    const { price } = parsePriceData(account.data)
+    if (price === undefined) throw new Error("Couldn't fetch price")
+
+    collateralPrices.set(address.toString(), new BN(price * 10 ** ORACLE_OFFSET))
+  })
+
+  return collateralPrices
+}
+
+export const getConnection = (network: Network) => {
+  return network === Network.MAIN
+    ? new Connection('https://ssc-dao.genesysgo.net', 'recent')
+    : new Connection('https://psytrbhymqlkfrhudd.dev.genesysgo.net:8899', {
+        wsEndpoint: 'wss://psytrbhymqlkfrhudd.dev.genesysgo.net:8900',
+        commitment: 'recent'
+      })
 }
 
 export interface UserWithAddress {

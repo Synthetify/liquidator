@@ -1,127 +1,45 @@
-import { Connection, Account, Keypair } from '@solana/web3.js'
-import { Provider, BN } from '@project-serum/anchor'
-import { Network, DEV_NET, MAIN_NET } from '@synthetify/sdk/lib/network'
-import { AssetsList, Exchange, ExchangeAccount, ExchangeState } from '@synthetify/sdk/lib/exchange'
-import { ACCURACY, sleep } from '@synthetify/sdk/lib/utils'
-import { Token, TOKEN_PROGRAM_ID } from '@solana/spl-token'
-import { liquidate, getAccountsAtRisk, createAccountsOnAllCollaterals } from './utils'
-import { cyan, yellow } from 'colors'
-import { Prices } from './prices'
-import { Synchronizer } from './synchronizer'
+import { Account, Keypair } from '@solana/web3.js'
+import { Provider, Wallet } from '@project-serum/anchor'
+import { Network } from '@synthetify/sdk/lib/network'
+import { Exchange } from '@synthetify/sdk/lib/exchange'
+import { sleep } from '@synthetify/sdk/lib/utils'
+import { getConnection } from './utils'
+import { vaultLoop } from './vaults'
+import { stakingLoop } from './staking'
+import { bs58 } from '@project-serum/anchor/dist/cjs/utils/bytes'
 
-const XUSD_BEFORE_WARNING = new BN(100).pow(new BN(ACCURACY))
-const CHECK_ALL_INTERVAL = 60 * 60 * 1000
-const CHECK_AT_RISK_INTERVAL = 5 * 60 * 1000
 const NETWORK = Network.MAIN
+const SCAN_INTERVAL = 1000 * 60 * 5
 
-const provider = Provider.local()
+const insideCI = process.env.CI === 'true'
+const secretWallet = new Wallet(
+  insideCI ? Keypair.fromSecretKey(bs58.decode(process?.env?.PRIV_KEY ?? '')) : Keypair.generate()
+)
+
+const connection = getConnection(NETWORK)
+const provider = insideCI
+  ? new Provider(connection, secretWallet, { commitment: 'recent' })
+  : Provider.local()
+
 // @ts-expect-error
 const wallet = provider.wallet.payer as Account
-const connection = new Connection('https://ssc-dao.genesysgo.net', 'recent')
-const { exchange: exchangeProgram, exchangeAuthority } = MAIN_NET
 
 const main = async () => {
   console.log('Initialization')
-  const exchange = await Exchange.build(
-    connection,
-    NETWORK,
-    provider.wallet,
-    exchangeAuthority,
-    exchangeProgram
-  )
+  const exchange = await Exchange.build(connection, NETWORK, provider.wallet)
+  await exchange.getState()
 
-  // const state = await exchange.getState()
-  const state = new Synchronizer<ExchangeState>(
-    connection,
-    exchange.stateAddress,
-    'state',
-    await exchange.getState()
-  )
+  console.log(`Using wallet: ${wallet.publicKey}`)
 
-  const prices = await Prices.build(
-    connection,
-    await exchange.getAssetsList(state.account.assetsList)
-  )
+  await stakingLoop(exchange, wallet)
+  await vaultLoop(exchange, wallet)
 
-  console.log('Assuring accounts on every collateral..')
-  const collateralAccounts = await createAccountsOnAllCollaterals(
-    wallet,
-    connection,
-    prices.assetsList
-  )
-
-  const xUSDAddress = prices.assetsList.synthetics[0].assetAddress
-  const xUSDToken = new Token(connection, xUSDAddress, TOKEN_PROGRAM_ID, wallet)
-  let xUSDAccount = await xUSDToken.getOrCreateAssociatedAccountInfo(wallet.publicKey)
-
-  if (xUSDAccount.amount.lt(XUSD_BEFORE_WARNING))
-    console.warn(yellow(`Account is low on xUSD (${xUSDAccount.amount.toString()})`))
-
-  // Main loop
-  let nextFullCheck = 0
-  let nextCheck = 0
-  let atRisk: Synchronizer<ExchangeAccount>[] = []
-
-  while (true) {
-    if (Date.now() > nextFullCheck + CHECK_ALL_INTERVAL) {
-      nextFullCheck = Date.now() + CHECK_ALL_INTERVAL
-      // Fetching all accounts with debt over limit
-      const newAccounts = await getAccountsAtRisk(
-        connection,
-        exchange,
-        exchangeProgram,
-        state,
-        prices.assetsList
-      )
-
-      const freshAtRisk = newAccounts
-        .filter(fresh => !atRisk.some(old => old.address.equals(fresh.address)))
-        .sort((a, b) => a.data.liquidationDeadline.cmp(b.data.liquidationDeadline))
-        .map(fresh => {
-          return new Synchronizer<ExchangeAccount>(
-            connection,
-            fresh.address,
-            'ExchangeAccount',
-            fresh.data
-          )
-        })
-
-      atRisk = atRisk.concat(freshAtRisk)
-    }
-
-    if (Date.now() > nextCheck + CHECK_AT_RISK_INTERVAL) {
-      nextCheck = Date.now() + CHECK_AT_RISK_INTERVAL
-      const slot = new BN(await connection.getSlot())
-
-      console.log(cyan(`Liquidating suitable accounts (${atRisk.length})..`))
-      console.time('checking time')
-
-      for (const exchangeAccount of atRisk) {
-        // Users are sorted so we can stop checking if deadline is in the future
-        if (slot.lt(exchangeAccount.account.liquidationDeadline)) break
-
-        while (true) {
-          const liquidated = await liquidate(
-            exchange,
-            exchangeAccount,
-            prices.assetsList,
-            state.account,
-            collateralAccounts,
-            wallet,
-            xUSDAccount.amount,
-            xUSDAccount.address
-          )
-          if (!liquidated) break
-          xUSDAccount = await xUSDToken.getOrCreateAssociatedAccountInfo(wallet.publicKey)
-        }
-      }
-
-      xUSDAccount = await xUSDToken.getOrCreateAssociatedAccountInfo(wallet.publicKey)
-      console.log('Finished checking')
-      console.timeEnd('checking time')
-    }
-
-    await sleep(Math.min(nextCheck, nextFullCheck) - Date.now() + 1)
+  if (!insideCI) {
+    setInterval(() => stakingLoop(exchange, wallet), SCAN_INTERVAL)
+    await sleep(SCAN_INTERVAL / 2)
+    setInterval(() => vaultLoop(exchange, wallet), SCAN_INTERVAL)
+  } else {
+    process.exit()
   }
 }
 
