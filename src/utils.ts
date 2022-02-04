@@ -184,8 +184,6 @@ export const vaultsToPrices = async (vaults: Map<string, Vault>, connection: Con
     addresses.map(collateralPriceFeed => connection.getAccountInfo(collateralPriceFeed))
   )
 
-  if (prices.length != addresses.length) throw new Error('I am wrong about how map works')
-
   addresses.forEach((address, i) => {
     const account = prices[i]
     if (account === null) throw new Error("Couldn't fetch price")
