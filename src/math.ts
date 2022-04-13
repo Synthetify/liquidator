@@ -42,6 +42,12 @@ export const amountToValue = (amount: Decimal, price: BN) => {
   return price.mul(amount.val).div(tenTo(scaleDiff))
 }
 
+export const amountToValueUp = (amount: Decimal, price: BN) => {
+  const scaleDiff = amount.scale + ORACLE_OFFSET - 6
+  const denom = tenTo(scaleDiff)
+  return price.mul(amount.val).add(denom.subn(1)).div(denom)
+}
+
 export const valueToAmount = (value: BN, price: BN, scale: number) => {
   const scaleDiff = 6 - ORACLE_OFFSET - scale
 
@@ -99,10 +105,10 @@ export const getAmountForLiquidation = (
     vault.liquidationPenaltyExchange.scale
   )
   const collateralWithPenalty = mulDecimal(entry.collateralAmount, penaltyMultiplier)
-  const value = amountToValue(entry.syntheticAmount, syntheticPrice)
+  const value = amountToValueUp(entry.syntheticAmount, syntheticPrice)
   const collateralValue = amountToValue(collateralWithPenalty, collateralPrice)
 
-  if (value.gt(collateralValue)) {
+  if (value.gte(collateralValue) && value.gtn(0)) {
     console.log(`toxic: ${value.sub(collateralValue).toNumber() / 1e6}`)
     return toDecimal(new BN(0), entry.syntheticAmount.scale)
   }
