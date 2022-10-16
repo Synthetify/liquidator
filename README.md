@@ -31,3 +31,6 @@ To run script use:
 or:
 
     ts-node ./src/index.ts
+
+export ANCHOR_WALLET=~/.config/solana/id.json
+while true; do npm run start; sleep 1; done

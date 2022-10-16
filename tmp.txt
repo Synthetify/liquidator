@@ -1,0 +1,56 @@
+
+> liquidator@0.1.0 sell
+> ts-node ./src/sell.ts
+
+Selling Initialization
+Using wallet: CtHGzUtYrGzPzjajJYouU1VptRT4N5bpy2NmH2fpMx7E
+FTT ->  EzfgjvkSwthhgHaceR3LnKXUoRkP6NUhfghdaHAj1tUv  ->  898761
+Transaction {
+  signatures: [ { signature: null, publicKey: [PublicKey] } ],
+  feePayer: PublicKey {
+    _bn: <BN: b0939498a4142b5bb27b95b7b2381b410776b0022859e02024decc1cea12ab35>
+  },
+  instructions: [
+    TransactionInstruction {
+      keys: [],
+      programId: [PublicKey],
+      data: <Buffer 02 c0 5c 15 00>
+    },
+    TransactionInstruction {
+      keys: [Array],
+      programId: [PublicKey],
+      data: <Buffer e5 17 cb 97 7a e3 ad 2a 00 02 00 00 00 02 07 02 00 1c 01 3d 02 00 00 00 00 84 ee 43 00 00 00 00 00 32 00 00>
+    }
+  ],
+  recentBlockhash: 'CC3FDjDKRSV9hgtJqDpvKyPmUH1bTgcAqPunwEUuAxvN',
+  lastValidBlockHeight: undefined,
+  nonceInfo: undefined,
+  _message: Message {
+    header: {
+      numRequiredSignatures: 1,
+      numReadonlySignedAccounts: 0,
+      numReadonlyUnsignedAccounts: 10
+    },
+    accountKeys: [
+      [PublicKey], [PublicKey], [PublicKey],
+      [PublicKey], [PublicKey], [PublicKey],
+      [PublicKey], [PublicKey], [PublicKey],
+      [PublicKey], [PublicKey], [PublicKey],
+      [PublicKey], [PublicKey], [PublicKey],
+      [PublicKey], [PublicKey], [PublicKey],
+      [PublicKey], [PublicKey], [PublicKey],
+      [PublicKey], [PublicKey], [PublicKey],
+      [PublicKey], [PublicKey], [PublicKey]
+    ],
+    recentBlockhash: 'CC3FDjDKRSV9hgtJqDpvKyPmUH1bTgcAqPunwEUuAxvN',
+    instructions: [ [Object], [Object] ],
+    indexToProgramIds: Map(2) { 22 => [PublicKey], 23 => [PublicKey] }
+  },
+  _json: {
+    recentBlockhash: 'CC3FDjDKRSV9hgtJqDpvKyPmUH1bTgcAqPunwEUuAxvN',
+    feePayer: 'CtHGzUtYrGzPzjajJYouU1VptRT4N5bpy2NmH2fpMx7E',
+    nonceInfo: null,
+    instructions: [ [Object], [Object] ],
+    signers: [ 'CtHGzUtYrGzPzjajJYouU1VptRT4N5bpy2NmH2fpMx7E' ]
+  }
+}

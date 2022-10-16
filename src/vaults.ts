@@ -46,8 +46,8 @@ export const vaultLoop = async (exchange: Exchange, wallet: Account) => {
 
   for (const entry of entries) {
     if (!vaults.has(entry.vault.toString())) continue
-
     const vault = vaults.get(entry.vault.toString()) as Vault
+    if (vault.collateral.toString() !== '6MeoZEcUMhAB788YXTQN4x7K8MnwSt6RHWsLkuq9GJb2') continue
     const collateralPrice = collateralPrices.get(vault.collateralPriceFeed.toString()) ?? new BN(0)
     const syntheticPrice = prices.getPriceFor(vault.synthetic).val
     const amount = getAmountForLiquidation(entry, vault, collateralPrice, syntheticPrice)

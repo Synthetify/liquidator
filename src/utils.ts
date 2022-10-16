@@ -199,7 +199,7 @@ export const vaultsToPrices = async (vaults: Map<string, Vault>, connection: Con
 
 export const getConnection = (network: Network) => {
   return network === Network.MAIN
-    ? new Connection('https://ssc-dao.genesysgo.net', 'recent')
+    ? new Connection('https://solana-api.projectserum.com/', 'recent')
     : new Connection('https://psytrbhymqlkfrhudd.dev.genesysgo.net:8899', {
         wsEndpoint: 'wss://psytrbhymqlkfrhudd.dev.genesysgo.net:8900',
         commitment: 'recent'
